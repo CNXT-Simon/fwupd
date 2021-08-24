@@ -5901,6 +5901,8 @@ fu_engine_ensure_security_attrs(FuEngine *self)
 	g_autoptr(GPtrArray) devices = fu_device_list_get_all(self->device_list);
 	g_autoptr(GPtrArray) items = NULL;
 
+	g_warning("fu-engine ensure security\n");
+
 	/* already valid */
 	if (self->host_security_id != NULL)
 		return;
@@ -5942,8 +5944,11 @@ fu_engine_ensure_security_attrs(FuEngine *self)
 	fu_security_attrs_depsolve(self->host_security_attrs);
 
 	/* distil into one simple string */
-	g_free(self->host_security_id);
-	self->host_security_id = fu_engine_attrs_calculate_hsi_for_chassis(self);
+	g_free (self->host_security_id);
+	self->host_security_id = fu_engine_attrs_calculate_hsi_for_chassis (self);
+	fu_security_attrs_to_json_string(self->host_security_attrs);
+
+	g_warning("HSI text is %s", self->host_security_id);
 }
 
 const gchar *

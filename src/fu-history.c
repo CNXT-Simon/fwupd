@@ -20,7 +20,11 @@
 #include "fu-history.h"
 #include "fu-mutex.h"
 
+<<<<<<< HEAD
 #define FU_HISTORY_CURRENT_SCHEMA_VERSION 6
+=======
+#define FU_HISTORY_CURRENT_SCHEMA_VERSION	7
+>>>>>>> a9f711cb (Generate security attribute json string)
 
 static void
 fu_history_finalize(GObject *object);
@@ -156,37 +160,40 @@ static gboolean
 fu_history_create_database(FuHistory *self, GError **error)
 {
 	gint rc;
-	rc = sqlite3_exec(self->db,
-			  "BEGIN TRANSACTION;"
-			  "CREATE TABLE IF NOT EXISTS schema ("
-			  "created timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
-			  "version INTEGER DEFAULT 0);"
-			  "INSERT INTO schema (version) VALUES (0);"
-			  "CREATE TABLE IF NOT EXISTS history ("
-			  "device_id TEXT,"
-			  "update_state INTEGER DEFAULT 0,"
-			  "update_error TEXT,"
-			  "filename TEXT,"
-			  "display_name TEXT,"
-			  "plugin TEXT,"
-			  "device_created INTEGER DEFAULT 0,"
-			  "device_modified INTEGER DEFAULT 0,"
-			  "checksum TEXT DEFAULT NULL,"
-			  "flags INTEGER DEFAULT 0,"
-			  "metadata TEXT DEFAULT NULL,"
-			  "guid_default TEXT DEFAULT NULL,"
-			  "version_old TEXT,"
-			  "version_new TEXT,"
-			  "checksum_device TEXT DEFAULT NULL,"
-			  "protocol TEXT DEFAULT NULL);"
-			  "CREATE TABLE IF NOT EXISTS approved_firmware ("
-			  "checksum TEXT);"
-			  "CREATE TABLE IF NOT EXISTS blocked_firmware ("
-			  "checksum TEXT);"
-			  "COMMIT;",
-			  NULL,
-			  NULL,
-			  NULL);
+	rc = sqlite3_exec (self->db,
+			 "BEGIN TRANSACTION;"
+			 "CREATE TABLE IF NOT EXISTS schema ("
+			 "created timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+			 "version INTEGER DEFAULT 0);"
+			 "INSERT INTO schema (version) VALUES (0);"
+			 "CREATE TABLE IF NOT EXISTS history ("
+			 "device_id TEXT,"
+			 "update_state INTEGER DEFAULT 0,"
+			 "update_error TEXT,"
+			 "filename TEXT,"
+			 "display_name TEXT,"
+			 "plugin TEXT,"
+			 "device_created INTEGER DEFAULT 0,"
+			 "device_modified INTEGER DEFAULT 0,"
+			 "checksum TEXT DEFAULT NULL,"
+			 "flags INTEGER DEFAULT 0,"
+			 "metadata TEXT DEFAULT NULL,"
+			 "guid_default TEXT DEFAULT NULL,"
+			 "version_old TEXT,"
+			 "version_new TEXT,"
+			 "checksum_device TEXT DEFAULT NULL,"
+			 "protocol TEXT DEFAULT NULL);"
+			 "CREATE TABLE IF NOT EXISTS approved_firmware ("
+			 "checksum TEXT);"
+			 "CREATE TABLE IF NOT EXISTS blocked_firmware ("
+			 "checksum TEXT);"
+			 "CREATE TABLE IF NOT EXISTS his_history ("
+			 "last timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+			 "hsi_details TEXT DEFAULT NULL);"
+			 "COMMIT;",
+			 NULL,
+			 NULL,
+			 NULL);
 	if (rc != SQLITE_OK) {
 		g_set_error(error,
 			    FWUPD_ERROR,
@@ -307,6 +314,24 @@ fu_history_migrate_database_v5(FuHistory *self, GError **error)
 	return TRUE;
 }
 
+static gboolean
+fu_history_migrate_database_v6 (FuHistory *self, GError **error)
+{
+	gint rc;
+	rc = sqlite3_exec (self->db,
+				"CREATE TABLE IF NOT EXISTS his_history ("
+					"last timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+					"hsi_details TEXT DEFAULT NULL);",
+				NULL, NULL, NULL);
+	if (rc != SQLITE_OK) {
+		g_set_error (error, FWUPD_ERROR, FWUPD_ERROR_INTERNAL,
+			     "Failed to create table: %s",
+			     sqlite3_errmsg (self->db));
+		return FALSE;
+	}
+	return TRUE;
+}
+
 /* returns 0 if database is not initialized */
 static guint
 fu_history_get_schema_version(FuHistory *self)
@@ -362,6 +387,10 @@ fu_history_create_or_migrate(FuHistory *self, guint schema_ver, GError **error)
 	/* fall through */
 	case 5:
 		if (!fu_history_migrate_database_v5(self, error))
+			return FALSE;
+	/* fall through */
+	case 6:
+		if (!fu_history_migrate_database_v6 (self, error))
 			return FALSE;
 		break;
 	default:

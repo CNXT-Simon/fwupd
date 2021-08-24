@@ -5,11 +5,15 @@
  */
 
 #include "fu-security-attr.h"
+#define G_LOG_DOMAIN	"FuSecurityAttr"
 
 #include <config.h>
 #include <glib/gi18n.h>
 
+#include <json-glib/json-glib.h>
+
 #include "fwupd-security-attr-private.h"
+#include "fu-security-attrs-private.h"
 
 gchar *
 fu_security_attr_get_name(FwupdSecurityAttr *attr)
@@ -247,3 +251,91 @@ fu_security_attr_get_result(FwupdSecurityAttr *attr)
 	/* TRANSLATORS: Suffix: the fallback HSI result */
 	return _("Failed");
 }
+
+void fu_security_attrs_to_json_string(FuSecurityAttrs *attrs)
+{
+	// example
+	/**
+	 * JsonBuilder *builder = json_builder_new ();
+   2 
+   3   json_builder_begin_object (builder);
+   4 
+   5   json_builder_set_member_name (builder, "url");
+   6   json_builder_add_string_value (builder, "http://www.gnome.org/img/flash/two-thirty.png");
+   7 
+   8   json_builder_set_member_name (builder, "size");
+   9   json_builder_begin_array (builder);
+  10   json_builder_add_int_value (builder, 652);
+  11   json_builder_add_int_value (builder, 242);
+  12   json_builder_end_array (builder);
+  13 
+  14   json_builder_end_object (builder);
+	 **/
+
+/*
+{
+    "security_attrs": {
+       "Attrs": [
+           {
+             "name": "aaa",
+             "value": "bbb"
+           } 
+       ]
+    }
+}
+*/
+	g_autofree gchar *data = NULL;
+    g_autoptr(GPtrArray) items = NULL;
+	g_autoptr(GError) error = NULL;
+	 
+	// create json builder
+	JsonBuilder *builder = json_builder_new ();
+	json_builder_begin_object (builder);
+	json_builder_set_member_name (builder, "SecurityAttrs");
+	json_builder_begin_object (builder);
+	json_builder_set_member_name (builder, "Attrs");
+	json_builder_begin_array (builder);
+	items = fu_security_attrs_get_all (attrs);
+	for (guint i = 0; i < items->len; i++) {
+		FwupdSecurityAttr *attr = g_ptr_array_index (items, i);
+		json_builder_begin_object (builder);
+		fwupd_security_attr_to_json (attr, builder);
+		json_builder_end_object (builder);
+	}
+	json_builder_end_array (builder);
+	json_builder_end_object (builder);
+	json_builder_end_object (builder);
+
+	/* export as a string */
+	JsonNode *json_root = json_builder_get_root (builder);
+	JsonGenerator *json_generator = json_generator_new ();
+	json_generator_set_pretty (json_generator, TRUE);
+	json_generator_set_root (json_generator, json_root);
+	data = json_generator_to_data (json_generator, NULL);
+	if (data == NULL) {
+	/*	g_set_error_literal (error,
+				     FWUPD_ERROR,
+				     FWUPD_ERROR_INTERNAL,
+				     "Failed to convert to JSON string");
+	*/
+		g_warning("Json build error");
+	}
+
+    g_print("--> %s", data);
+}
+
+
+void
+fu_security_attrs_to_json(FuSecurityAttrs *attrs)
+{
+	g_autoptr(GPtrArray) items = NULL;
+	//JsonBuilder *builder = json_builder_new ()
+	items = fu_security_attrs_get_all (attrs);
+	for (guint i = 0; i < items->len; i++) {
+		FwupdSecurityAttr *attr = g_ptr_array_index (items, i);
+		g_autofree gchar *name_tmp = fu_security_attr_get_name (attr);
+		g_warning("Kate---> %s", name_tmp);
+	//	fwupd_security_attr_to_json(attr, builder);
+	}
+}
+
