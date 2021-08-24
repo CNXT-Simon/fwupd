@@ -187,9 +187,10 @@ fu_history_create_database(FuHistory *self, GError **error)
 			 "checksum TEXT);"
 			 "CREATE TABLE IF NOT EXISTS blocked_firmware ("
 			 "checksum TEXT);"
-			 "CREATE TABLE IF NOT EXISTS his_history ("
+			 "CREATE TABLE IF NOT EXISTS hsi_history ("
 			 "last timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
-			 "hsi_details TEXT DEFAULT NULL);"
+			 "hsi_details TEXT DEFAULT NULL,"
+			 "hsi_score TEXT DEFAULT NULL);"
 			 "COMMIT;",
 			 NULL,
 			 NULL,
@@ -1310,6 +1311,40 @@ fu_history_add_blocked_firmware(FuHistory *self, const gchar *checksum, GError *
 	}
 	sqlite3_bind_text(stmt, 1, checksum, -1, SQLITE_STATIC);
 	return fu_history_stmt_exec(self, stmt, NULL, error);
+}
+
+
+gboolean
+fu_history_add_security_attribute(FuHistory *self, gchar *security_attr_json, 
+									gchar *hsi_score, GError **error)
+{
+	gint rc;
+	g_autoptr(sqlite3_stmt) stmt = NULL;
+	g_autoptr(GRWLockWriterLocker) locker = NULL;
+
+	g_return_val_if_fail (FU_IS_HISTORY (self), FALSE);
+
+	/* lazy load */
+	if (!fu_history_load (self, error))
+		return FALSE;
+
+	/* remove entries */
+	locker = g_rw_lock_writer_locker_new (&self->db_mutex);
+	g_return_val_if_fail (locker != NULL, FALSE);
+	rc = sqlite3_prepare_v2 (self->db,
+				 "INSERT INTO hsi_history (hsi_details, hsi_score)"
+				 "VALUES (?1, ?2)",
+				 -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		g_warning("write error %s", sqlite3_errmsg (self->db));
+		g_set_error (error, FWUPD_ERROR, FWUPD_ERROR_INTERNAL,
+			     "Failed to prepare SQL to delete blocked firmware: %s",
+			     sqlite3_errmsg (self->db));
+		return FALSE;
+	}
+	sqlite3_bind_text (stmt, 1, security_attr_json, -1, SQLITE_STATIC);
+	sqlite3_bind_text (stmt, 2, hsi_score, -1, SQLITE_STATIC);
+	return fu_history_stmt_exec (self, stmt, NULL, error);
 }
 
 static void
