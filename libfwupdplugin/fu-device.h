@@ -12,6 +12,7 @@
 #include "fu-common-version.h"
 #include "fu-context.h"
 #include "fu-firmware.h"
+#include "fu-progress.h"
 #include "fu-security-attrs.h"
 
 #define FU_TYPE_DEVICE (fu_device_get_type())
@@ -407,6 +408,8 @@ FuDevice *
 fu_device_get_root(FuDevice *self);
 FuDevice *
 fu_device_get_parent(FuDevice *self);
+FuProgress *
+fu_device_get_progress_helper(FuDevice *self);
 GPtrArray *
 fu_device_get_children(FuDevice *self);
 void
@@ -504,9 +507,9 @@ fu_device_get_firmware_size_min(FuDevice *self);
 guint64
 fu_device_get_firmware_size_max(FuDevice *self);
 guint
-fu_device_get_progress(FuDevice *self);
+fu_device_get_progress(FuDevice *self) G_DEPRECATED_FOR(fu_progress_get_percentage);
 void
-fu_device_set_progress(FuDevice *self, guint progress);
+fu_device_set_progress(FuDevice *self, guint progress) G_DEPRECATED_FOR(fu_progress_set_percentage);
 guint
 fu_device_get_battery_level(FuDevice *self);
 void
@@ -516,7 +519,8 @@ fu_device_get_battery_threshold(FuDevice *self);
 void
 fu_device_set_battery_threshold(FuDevice *self, guint battery_threshold);
 void
-fu_device_set_progress_full(FuDevice *self, gsize progress_done, gsize progress_total);
+fu_device_set_progress_full(FuDevice *self, gsize progress_done, gsize progress_total)
+    G_DEPRECATED_FOR(fu_progress_set_percentage_full);
 void
 fu_device_sleep_with_progress(FuDevice *self, guint delay_secs);
 void

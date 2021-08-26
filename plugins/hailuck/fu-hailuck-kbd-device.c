@@ -19,8 +19,9 @@ G_DEFINE_TYPE(FuHailuckKbdDevice, fu_hailuck_kbd_device, FU_TYPE_HID_DEVICE)
 static gboolean
 fu_hailuck_kbd_device_detach(FuDevice *device, GError **error)
 {
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	guint8 buf[6] = {FU_HAILUCK_REPORT_ID_SHORT, FU_HAILUCK_CMD_DETACH};
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	if (!fu_hid_device_set_report(FU_HID_DEVICE(device),
 				      buf[0],
 				      buf,

@@ -305,6 +305,7 @@ fu_elantp_hid_device_write_firmware(FuDevice *device,
 {
 	FuElantpHidDevice *self = FU_ELANTP_HID_DEVICE(device);
 	FuElantpFirmware *firmware_elantp = FU_ELANTP_FIRMWARE(firmware);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	gsize bufsz = 0;
 	guint16 checksum = 0;
 	guint16 checksum_device = 0;
@@ -314,6 +315,13 @@ fu_elantp_hid_device_write_firmware(FuDevice *device,
 	g_autoptr(GBytes) fw = NULL;
 	g_autoptr(GPtrArray) chunks = NULL;
 
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_BUSY, 10); /* detach */
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 50);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_VERIFY, 30);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_RESTART, 10); /* reset */
+
 	/* simple image */
 	fw = fu_firmware_get_bytes(firmware, error);
 	if (fw == NULL)
@@ -322,9 +330,9 @@ fu_elantp_hid_device_write_firmware(FuDevice *device,
 	/* detach */
 	if (!fu_elantp_hid_device_detach(device, error))
 		return FALSE;
+	fu_progress_step_done(progress);
 
 	/* write each block */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
 	buf = g_bytes_get_data(fw, &bufsz);
 	iap_addr = fu_elantp_firmware_get_iap_addr(firmware_elantp);
 	chunks = fu_chunk_array_new(buf + iap_addr, bufsz - iap_addr, 0x0, 0x0, self->fw_page_size);
@@ -368,11 +376,13 @@ fu_elantp_hid_device_write_firmware(FuDevice *device,
 
 		/* update progress */
 		checksum += csum_tmp;
-		fu_device_set_progress_full(device, (gsize)i, (gsize)chunks->len);
+		fu_progress_set_percentage_full(fu_progress_get_child(progress),
+						(gsize)i + 1,
+						(gsize)chunks->len);
 	}
+	fu_progress_step_done(progress);
 
 	/* verify the written checksum */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_VERIFY);
 	if (!fu_elantp_hid_device_read_cmd(self,
 					   ETP_CMD_I2C_IAP_CHECKSUM,
 					   csum_buf,
@@ -395,11 +405,11 @@ fu_elantp_hid_device_write_firmware(FuDevice *device,
 			    checksum_device);
 		return FALSE;
 	}
+	fu_progress_step_done(progress);
 
 	/* wait for a reset */
-	fu_device_set_progress(device, 0);
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
-	g_usleep(ELANTP_DELAY_COMPLETE * 1000);
+	fu_progress_sleep(progress, ELANTP_DELAY_COMPLETE);
+	fu_progress_step_done(progress);
 	return TRUE;
 }
 
@@ -407,6 +417,7 @@ static gboolean
 fu_elantp_hid_device_detach(FuDevice *device, GError **error)
 {
 	FuElantpHidDevice *self = FU_ELANTP_HID_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	guint16 iap_ver;
 	guint16 ic_type;
 	guint8 buf[2] = {0x0};
@@ -415,7 +426,7 @@ fu_elantp_hid_device_detach(FuDevice *device, GError **error)
 	/* sanity check */
 	if (fu_device_has_flag(device, FWUPD_DEVICE_FLAG_IS_BOOTLOADER)) {
 		g_debug("in bootloader mode, reset IC");
-		fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+		fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 		if (!fu_elantp_hid_device_write_cmd(self,
 						    ETP_CMD_I2C_IAP_RESET,
 						    ETP_I2C_IAP_RESET,
@@ -516,6 +527,7 @@ static gboolean
 fu_elantp_hid_device_attach(FuDevice *device, GError **error)
 {
 	FuElantpHidDevice *self = FU_ELANTP_HID_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 
 	/* sanity check */
 	if (!fu_device_has_flag(device, FWUPD_DEVICE_FLAG_IS_BOOTLOADER)) {
@@ -524,7 +536,7 @@ fu_elantp_hid_device_attach(FuDevice *device, GError **error)
 	}
 
 	/* reset back to runtime */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	if (!fu_elantp_hid_device_write_cmd(self, ETP_CMD_I2C_IAP_RESET, ETP_I2C_IAP_RESET, error))
 		return FALSE;
 	g_usleep(ELANTP_DELAY_RESET * 1000);

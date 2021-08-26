@@ -221,10 +221,17 @@ fu_logitech_hidpp_bootloader_nordic_write_firmware(FuDevice *device,
 						   GError **error)
 {
 	FuLogitechHidPpBootloader *self = FU_UNIFYING_BOOTLOADER(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	const FuLogitechHidPpBootloaderRequest *payload;
 	guint16 addr;
 	g_autoptr(GBytes) fw = NULL;
 	g_autoptr(GPtrArray) reqs = NULL;
+
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_ERASE, 10);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 89);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 1); /* block 0 */
 
 	/* get default image */
 	fw = fu_firmware_get_bytes(firmware, error);
@@ -232,19 +239,20 @@ fu_logitech_hidpp_bootloader_nordic_write_firmware(FuDevice *device,
 		return FALSE;
 
 	/* erase firmware pages up to the bootloader */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_ERASE);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_ERASE);
 	for (addr = fu_logitech_hidpp_bootloader_get_addr_lo(self);
 	     addr < fu_logitech_hidpp_bootloader_get_addr_hi(self);
 	     addr += fu_logitech_hidpp_bootloader_get_blocksize(self)) {
 		if (!fu_logitech_hidpp_bootloader_nordic_erase(self, addr, error))
 			return FALSE;
 	}
+	fu_progress_step_done(progress);
 
 	/* transfer payload */
 	reqs = fu_logitech_hidpp_bootloader_parse_requests(self, fw, error);
 	if (reqs == NULL)
 		return FALSE;
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_WRITE);
 	for (guint i = 1; i < reqs->len; i++) {
 		gboolean res;
 		payload = g_ptr_array_index(reqs, i);
@@ -265,8 +273,9 @@ fu_logitech_hidpp_bootloader_nordic_write_firmware(FuDevice *device,
 
 		if (!res)
 			return FALSE;
-		fu_device_set_progress_full(device, i * 32, reqs->len * 32);
+		fu_progress_set_percentage_full(fu_progress_get_child(progress), i + 1, reqs->len);
 	}
+	fu_progress_step_done(progress);
 
 	/* send the first managed packet last, excluding the reset vector */
 	payload = g_ptr_array_index(reqs, 0);
@@ -279,9 +288,7 @@ fu_logitech_hidpp_bootloader_nordic_write_firmware(FuDevice *device,
 
 	if (!fu_logitech_hidpp_bootloader_nordic_write(self, 0x0000, 0x01, payload->data, error))
 		return FALSE;
-
-	/* mark as complete */
-	fu_device_set_progress_full(device, reqs->len * 32, reqs->len * 32);
+	fu_progress_step_done(progress);
 
 	/* success! */
 	return TRUE;

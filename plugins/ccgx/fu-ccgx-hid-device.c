@@ -22,9 +22,10 @@ G_DEFINE_TYPE(FuCcgxHidDevice, fu_ccgx_hid_device, FU_TYPE_HID_DEVICE)
 static gboolean
 fu_ccgx_hid_device_enable_hpi_mode_cb(FuDevice *device, gpointer user_data, GError **error)
 {
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	guint8 buf[5] = {0xEE, 0xBC, 0xA6, 0xB9, 0xA8};
 
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	if (!fu_hid_device_set_report(FU_HID_DEVICE(device),
 				      buf[0],
 				      buf,

@@ -1162,12 +1162,12 @@ fu_mm_device_write_firmware_mbim_qdu(FuDevice *device, GBytes *fw, GError **erro
 	if (!fu_mm_device_writeln(autosuspend_delay_filename, "10000", error))
 		return FALSE;
 
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
-	fu_mbim_qdu_updater_write(self->mbim_qdu_updater, filename, data, device, error);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_WRITE);
+	fu_mbim_qdu_updater_write(self->mbim_qdu_updater, filename, data, device, progress, error);
 	if (!fu_device_locker_close(locker, error))
 		return FALSE;
 
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_READ);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_READ);
 	fu_device_set_remove_delay(device, MAX_WAIT_TIME_SECS * 1000);
 	fu_device_add_flag(device, FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 	version = fu_mm_device_get_firmware_version_mbim(device, error);
@@ -1196,6 +1196,15 @@ fu_mm_device_firehose_close(FuMmDevice *self, GError **error)
 	return fu_firehose_updater_close(updater, error);
 }
 
+static void
+fu_mm_device_write_percentage_changed_cb(FuFirehoseUpdater *firehose_updater,
+					 guint value,
+					 FuMmDevice *self)
+{
+	FuProgress *progress = fu_device_get_progress_helper(FU_DEVICE(self));
+	fu_device_set_progress(progress, value);
+}
+
 static gboolean
 fu_mm_device_firehose_write(FuMmDevice *self,
 			    XbSilo *rawprogram_silo,
@@ -1213,10 +1222,10 @@ fu_mm_device_firehose_write(FuMmDevice *self,
 	if (locker == NULL)
 		return FALSE;
 
-	progress_signal_id = g_signal_connect_swapped(self->firehose_updater,
-						      "write-percentage",
-						      G_CALLBACK(fu_device_set_progress),
-						      self);
+	progress_signal_id = g_signal_connect(self->firehose_updater,
+					      "write-percentage",
+					      G_CALLBACK(fu_mm_device_write_percentage_changed_cb),
+					      self);
 
 	write_result = fu_firehose_updater_write(self->firehose_updater,
 						 rawprogram_silo,
@@ -1300,7 +1309,7 @@ static gboolean
 fu_mm_device_write_firmware_firehose(FuDevice *device, GBytes *fw, GError **error)
 {
 	FuMmDevice *self = FU_MM_DEVICE(device);
-
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	GBytes *firehose_rawprogram;
 	g_autoptr(FuDeviceLocker) locker = NULL;
 	g_autoptr(FuArchive) archive = NULL;
@@ -1327,7 +1336,7 @@ fu_mm_device_write_firmware_firehose(FuDevice *device, GBytes *fw, GError **erro
 
 	/* flag as restart because the QCDM and MHI/BHI operations switch the
 	 * device into FP execution environment */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	/* switch to embedded downloader (EDL) execution environment */
 	if (!fu_mm_device_qcdm_switch_to_edl(FU_DEVICE(self), error))
 		return FALSE;
@@ -1346,7 +1355,7 @@ fu_mm_device_write_firmware_firehose(FuDevice *device, GBytes *fw, GError **erro
 	}
 
 	/* flag as write */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_WRITE);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_WRITE);
 
 	/* download all files in the firehose-rawprogram manifest via Firehose */
 	if (!fu_mm_device_firehose_write(self,
@@ -1356,7 +1365,7 @@ fu_mm_device_write_firmware_firehose(FuDevice *device, GBytes *fw, GError **erro
 		return FALSE;
 
 	/* flag as restart again, the module is switching to modem mode */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 
 	return TRUE;
 }
@@ -1393,7 +1402,7 @@ fu_mm_device_write_firmware(FuDevice *device,
 #if MM_CHECK_VERSION(1, 17, 1) && MBIM_CHECK_VERSION(1, 25, 3)
 	/* mbim qdu write operation */
 	if (self->update_methods & MM_MODEM_FIRMWARE_UPDATE_METHOD_MBIM_QDU)
-		return fu_mm_device_write_firmware_mbim_qdu(device, fw, error);
+		return fu_mm_device_write_firmware_mbim_qdu(device, fw, progress, error);
 
 #endif /* MM_CHECK_VERSION(1,17,1) && MBIM_CHECK_VERSION(1,25,3) */
 #if MM_CHECK_VERSION(1, 17, 2)

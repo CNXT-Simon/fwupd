@@ -429,6 +429,7 @@ static GBytes *
 fu_vli_pd_device_dump_firmware(FuDevice *device, GError **error)
 {
 	FuVliPdDevice *self = FU_VLI_PD_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autoptr(FuDeviceLocker) locker = NULL;
 
 	/* require detach -> attach */
@@ -438,10 +439,11 @@ fu_vli_pd_device_dump_firmware(FuDevice *device, GError **error)
 					   error);
 	if (locker == NULL)
 		return NULL;
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_READ);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_READ);
 	return fu_vli_device_spi_read(FU_VLI_DEVICE(self),
 				      0x0,
 				      fu_device_get_firmware_size_max(device),
+				      progress,
 				      error);
 }
 
@@ -461,7 +463,10 @@ fu_vli_pd_device_write_gpios(FuVliPdDevice *self, GError **error)
 }
 
 static gboolean
-fu_vli_pd_device_write_dual_firmware(FuVliPdDevice *self, GBytes *fw, GError **error)
+fu_vli_pd_device_write_dual_firmware(FuVliPdDevice *self,
+				     GBytes *fw,
+				     FuProgress *progress,
+				     GError **error)
 {
 	const guint8 *buf = NULL;
 	const guint8 *sbuf = NULL;
@@ -472,11 +477,17 @@ fu_vli_pd_device_write_dual_firmware(FuVliPdDevice *self, GBytes *fw, GError **e
 	guint32 sec_addr = 0x28000;
 	g_autoptr(GBytes) spi_fw = NULL;
 
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_BUSY, 10); /* crc */
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 45);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 45);
+
 	/* check spi fw1 crc16 */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_VERIFY);
 	spi_fw = fu_vli_device_spi_read(FU_VLI_DEVICE(self),
 					fu_vli_device_get_offset(FU_VLI_DEVICE(self)),
 					fu_device_get_firmware_size_max(FU_DEVICE(self)),
+					fu_progress_get_child(progress),
 					error);
 	if (spi_fw == NULL)
 		return FALSE;
@@ -493,19 +504,27 @@ fu_vli_pd_device_write_dual_firmware(FuVliPdDevice *self, GBytes *fw, GError **e
 		return FALSE;
 	}
 	crc_actual = fu_common_crc16(sbuf, sbufsz - 2);
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_WRITE);
+	fu_progress_step_done(progress);
 
 	/* update fw2 first if fw1 correct */
 	buf = g_bytes_get_data(fw, &bufsz);
 	if (crc_actual == crc_file) {
-		if (!fu_vli_device_spi_write(FU_VLI_DEVICE(self), sec_addr, buf, bufsz, error))
+		if (!fu_vli_device_spi_write(FU_VLI_DEVICE(self),
+					     sec_addr,
+					     buf,
+					     bufsz,
+					     fu_progress_get_child(progress),
+					     error))
 			return FALSE;
+		fu_progress_step_done(progress);
 		if (!fu_vli_device_spi_write(FU_VLI_DEVICE(self),
 					     fu_vli_device_get_offset(FU_VLI_DEVICE(self)),
 					     buf,
 					     bufsz,
+					     fu_progress_get_child(progress),
 					     error))
 			return FALSE;
+		fu_progress_step_done(progress);
 
 		/* else update fw1 first */
 	} else {
@@ -513,10 +532,18 @@ fu_vli_pd_device_write_dual_firmware(FuVliPdDevice *self, GBytes *fw, GError **e
 					     fu_vli_device_get_offset(FU_VLI_DEVICE(self)),
 					     buf,
 					     bufsz,
+					     fu_progress_get_child(progress),
 					     error))
 			return FALSE;
-		if (!fu_vli_device_spi_write(FU_VLI_DEVICE(self), sec_addr, buf, bufsz, error))
+		fu_progress_step_done(progress);
+		if (!fu_vli_device_spi_write(FU_VLI_DEVICE(self),
+					     sec_addr,
+					     buf,
+					     bufsz,
+					     fu_progress_get_child(progress),
+					     error))
 			return FALSE;
+		fu_progress_step_done(progress);
 	}
 
 	/* success */
@@ -530,6 +557,7 @@ fu_vli_pd_device_write_firmware(FuDevice *device,
 				GError **error)
 {
 	FuVliPdDevice *self = FU_VLI_PD_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	gsize bufsz = 0;
 	guint8 tmp = 0;
 	const guint8 *buf = NULL;
@@ -553,24 +581,32 @@ fu_vli_pd_device_write_firmware(FuDevice *device,
 	/* dual image on VL103 */
 	if (fu_vli_device_get_kind(FU_VLI_DEVICE(device)) == FU_VLI_DEVICE_KIND_VL103 &&
 	    fu_device_has_flag(device, FWUPD_DEVICE_FLAG_DUAL_IMAGE))
-		return fu_vli_pd_device_write_dual_firmware(self, fw, error);
+		return fu_vli_pd_device_write_dual_firmware(self, fw, progress, error);
+
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_ERASE, 50);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 50);
 
 	/* erase */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_ERASE);
-	if (!fu_vli_device_spi_erase_all(FU_VLI_DEVICE(self), error))
+	if (!fu_vli_device_spi_erase_all(FU_VLI_DEVICE(self),
+					 fu_progress_get_child(progress),
+					 error))
 		return FALSE;
+	fu_progress_step_done(progress);
 
 	/* write in chunks */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_WRITE);
 	buf = g_bytes_get_data(fw, &bufsz);
 	if (!fu_vli_device_spi_write(FU_VLI_DEVICE(self),
 				     fu_vli_device_get_offset(FU_VLI_DEVICE(self)),
 				     buf,
 				     bufsz,
+				     fu_progress_get_child(progress),
 				     error))
 		return FALSE;
 
 	/* success */
+	fu_progress_step_done(progress);
 	return TRUE;
 }
 
@@ -578,6 +614,7 @@ static gboolean
 fu_vli_pd_device_detach(FuDevice *device, GError **error)
 {
 	FuVliPdDevice *self = FU_VLI_PD_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autoptr(GError) error_local = NULL;
 
 	/* sanity check */
@@ -592,7 +629,7 @@ fu_vli_pd_device_detach(FuDevice *device, GError **error)
 
 	/* VL103 set ROM sig does not work, so use alternate function */
 	if (fu_vli_device_get_kind(FU_VLI_DEVICE(device)) == FU_VLI_DEVICE_KIND_VL103) {
-		fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+		fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 		if (!g_usb_device_control_transfer(fu_usb_device_get_dev(FU_USB_DEVICE(device)),
 						   G_USB_DEVICE_DIRECTION_HOST_TO_DEVICE,
 						   G_USB_DEVICE_REQUEST_TYPE_VENDOR,
@@ -656,7 +693,7 @@ fu_vli_pd_device_detach(FuDevice *device, GError **error)
 		return FALSE;
 
 	/* reset from SPI_Code into ROM_Code */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	if (!g_usb_device_control_transfer(fu_usb_device_get_dev(FU_USB_DEVICE(device)),
 					   G_USB_DEVICE_DIRECTION_HOST_TO_DEVICE,
 					   G_USB_DEVICE_REQUEST_TYPE_VENDOR,
@@ -687,6 +724,7 @@ static gboolean
 fu_vli_pd_device_attach(FuDevice *device, GError **error)
 {
 	FuVliPdDevice *self = FU_VLI_PD_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autoptr(GError) error_local = NULL;
 
 	/* Work around a silicon bug: Once the CC-resistor is removed, the
@@ -699,7 +737,7 @@ fu_vli_pd_device_attach(FuDevice *device, GError **error)
 			return FALSE;
 		if (!fu_vli_pd_device_write_reg(self, 0x1001, 0xf6, error))
 			return FALSE;
-		fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+		fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 		fu_device_add_flag(device, FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 		return TRUE;
 	}
@@ -741,7 +779,7 @@ fu_vli_pd_device_attach(FuDevice *device, GError **error)
 	}
 
 	/* replug */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	fu_device_add_flag(device, FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 	return TRUE;
 }

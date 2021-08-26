@@ -25,6 +25,7 @@ gboolean
 fu_plugin_cleanup(FuPlugin *plugin, FuDevice *device, FwupdInstallFlags flags, GError **error)
 {
 	GUsbDevice *usb_device;
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autoptr(FuDeviceLocker) locker = NULL;
 	g_autoptr(GError) error_local = NULL;
 
@@ -35,7 +36,7 @@ fu_plugin_cleanup(FuPlugin *plugin, FuDevice *device, FwupdInstallFlags flags, G
 	locker = fu_device_locker_new(device, error);
 	if (locker == NULL)
 		return FALSE;
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	usb_device = fu_usb_device_get_dev(FU_USB_DEVICE(device));
 	if (!g_usb_device_reset(usb_device, &error_local)) {
 		g_set_error(error,

@@ -67,7 +67,10 @@ fu_dfu_device_get_runtime_release(FuDfuDevice *self);
 gboolean
 fu_dfu_device_reset(FuDfuDevice *self, GError **error);
 FuFirmware *
-fu_dfu_device_upload(FuDfuDevice *self, FuDfuTargetTransferFlags flags, GError **error);
+fu_dfu_device_upload(FuDfuDevice *self,
+		     FuProgress *progress,
+		     FuDfuTargetTransferFlags flags,
+		     GError **error);
 gboolean
 fu_dfu_device_refresh(FuDfuDevice *self, GError **error);
 gboolean

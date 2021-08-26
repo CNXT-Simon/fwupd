@@ -240,6 +240,7 @@ static gboolean
 fu_dfu_device_wait_for_replug(FuDfuTool *self, FuDfuDevice *device, guint timeout, GError **error)
 {
 	GUsbDevice *usb_device = fu_usb_device_get_dev(FU_USB_DEVICE(device));
+	FuProgress *progress = fu_device_get_progress_helper(FU_DEVICE(device));
 	g_autoptr(GUsbDevice) usb_device2 = NULL;
 	g_autoptr(GUsbContext) usb_context = NULL;
 	g_autoptr(GError) error_local = NULL;
@@ -259,7 +260,7 @@ fu_dfu_device_wait_for_replug(FuDfuTool *self, FuDfuDevice *device, guint timeou
 		return FALSE;
 
 	/* re-open with new device set */
-	fu_device_set_status(FU_DEVICE(device), FWUPD_STATUS_IDLE);
+	fu_progress_set_status(progress, FWUPD_STATUS_IDLE);
 	fu_usb_device_set_dev(FU_USB_DEVICE(device), usb_device2);
 	if (!fu_device_open(FU_DEVICE(device), error))
 		return FALSE;
@@ -446,9 +447,10 @@ fu_dfu_tool_replace_data(FuDfuTool *self, gchar **values, GError **error)
 static void
 fu_tool_action_changed_cb(FuDevice *device, GParamSpec *pspec, FuDfuTool *self)
 {
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_print("%s:\t%u%%\n",
 		fwupd_status_to_string(fu_device_get_status(device)),
-		fu_device_get_progress(device));
+		fu_progress_get_percentage(progress));
 }
 
 static gboolean
@@ -522,7 +524,11 @@ fu_dfu_tool_read_alt(FuDfuTool *self, gchar **values, GError **error)
 	firmware = fu_dfuse_firmware_new();
 	fu_dfu_firmware_set_vid(FU_DFU_FIRMWARE(firmware), fu_dfu_device_get_runtime_vid(device));
 	fu_dfu_firmware_set_pid(FU_DFU_FIRMWARE(firmware), fu_dfu_device_get_runtime_pid(device));
-	if (!fu_dfu_target_upload(target, firmware, flags, error))
+	if (!fu_dfu_target_upload(target,
+				  firmware,
+				  fu_device_get_progress_helper(FU_DEVICE(device)),
+				  flags,
+				  error))
 		return FALSE;
 
 	/* do host reset */
@@ -592,7 +598,10 @@ fu_dfu_tool_read(FuDfuTool *self, gchar **values, GError **error)
 	/* transfer */
 	g_signal_connect(device, "notify::status", G_CALLBACK(fu_tool_action_changed_cb), self);
 	g_signal_connect(device, "notify::progress", G_CALLBACK(fu_tool_action_changed_cb), self);
-	firmware = fu_dfu_device_upload(device, flags, error);
+	firmware = fu_dfu_device_upload(device,
+					fu_device_get_progress_helper(FU_DEVICE(device)),
+					flags,
+					error);
 	if (firmware == NULL)
 		return FALSE;
 
@@ -721,7 +730,11 @@ fu_dfu_tool_write_alt(FuDfuTool *self, gchar **values, GError **error)
 	}
 
 	/* transfer */
-	if (!fu_dfu_target_download(target, image, flags, error))
+	if (!fu_dfu_target_download(target,
+				    image,
+				    fu_device_get_progress_helper(FU_DEVICE(device)),
+				    flags,
+				    error))
 		return FALSE;
 
 	/* do host reset */

@@ -359,6 +359,7 @@ fu_ccgx_dmc_write_firmware_image(FuDevice *device,
 				 FuCcgxDmcFirmwareRecord *img_rcd,
 				 gsize *fw_data_written,
 				 const gsize fw_data_size,
+				 FuProgress *progress,
 				 GError **error)
 {
 	FuCcgxDmcDevice *self = FU_CCGX_DMC_DEVICE(device);
@@ -397,7 +398,7 @@ fu_ccgx_dmc_write_firmware_image(FuDevice *device,
 
 			/* increase fw written size */
 			*fw_data_written += row_size;
-			fu_device_set_progress_full(device, *fw_data_written, fw_data_size);
+			fu_progress_set_percentage_full(progress, seg_index + 1, seg_records->len);
 
 			/* get status */
 			if (!fu_device_retry(FU_DEVICE(self),
@@ -419,6 +420,7 @@ fu_ccgx_dmc_write_firmware(FuDevice *device,
 {
 	FuCcgxDmcDevice *self = FU_CCGX_DMC_DEVICE(device);
 	FuCcgxDmcFirmwareRecord *img_rcd = NULL;
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	DmcIntRqt dmc_int_rqt = {0};
 	GBytes *custom_meta_blob;
 	GBytes *fwct_blob;
@@ -449,7 +451,7 @@ fu_ccgx_dmc_write_firmware(FuDevice *device,
 		custom_meta_data = g_bytes_get_data(custom_meta_blob, &custom_meta_bufsz);
 
 	/* reset */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_BUSY);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_BUSY);
 	if (!fu_ccgx_dmc_device_send_reset_state_machine(self, error))
 		return FALSE;
 
@@ -467,7 +469,7 @@ fu_ccgx_dmc_write_firmware(FuDevice *device,
 	/* get total fw size */
 	image_records = fu_ccgx_dmc_firmware_get_image_records(FU_CCGX_DMC_FIRMWARE(firmware));
 	fw_data_size = fu_ccgx_dmc_firmware_get_fw_data_size(FU_CCGX_DMC_FIRMWARE(firmware));
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_WRITE);
 	while (1) {
 		/* get interrupt request */
 		if (!fu_ccgx_dmc_device_read_intr_req(self, &dmc_int_rqt, error))
@@ -494,6 +496,7 @@ fu_ccgx_dmc_write_firmware(FuDevice *device,
 						      img_rcd,
 						      &fw_data_written,
 						      fw_data_size,
+						      progress,
 						      error))
 			return FALSE;
 	}
@@ -568,6 +571,7 @@ static gboolean
 fu_ccgx_dmc_device_attach(FuDevice *device, GError **error)
 {
 	FuCcgxDmcDevice *self = FU_CCGX_DMC_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	gboolean manual_replug;
 
 	manual_replug =
@@ -603,7 +607,7 @@ fu_ccgx_dmc_device_attach(FuDevice *device, GError **error)
 	if (manual_replug)
 		return TRUE;
 
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	fu_device_add_flag(device, FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 	return TRUE;
 }

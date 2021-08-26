@@ -475,11 +475,20 @@ fu_wac_device_write_firmware(FuDevice *device,
 			     GError **error)
 {
 	FuWacDevice *self = FU_WAC_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	gsize blocks_done = 0;
 	gsize blocks_total = 0;
 	g_autofree guint32 *csum_local = NULL;
 	g_autoptr(FuFirmware) img = NULL;
 	g_autoptr(GHashTable) fd_blobs = NULL;
+
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_RESTART, 2);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_ERASE, 2);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 90);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_VERIFY, 5);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_BUSY, 1);
 
 	/* get current selected device */
 	if (!fu_wac_device_ensure_firmware_index(self, error))
@@ -506,9 +515,9 @@ fu_wac_device_write_firmware(FuDevice *device,
 	/* get the updater protocol version */
 	if (!fu_wac_device_ensure_checksums(self, error))
 		return FALSE;
+	fu_progress_step_done(progress);
 
 	/* clear all checksums of pages */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_ERASE);
 	for (guint16 i = 0; i < self->flash_descriptors->len; i++) {
 		FuWacFlashDescriptor *fd = g_ptr_array_index(self->flash_descriptors, i);
 		if (fu_wav_device_flash_descriptor_is_wp(fd))
@@ -516,6 +525,7 @@ fu_wac_device_write_firmware(FuDevice *device,
 		if (!fu_wac_device_set_checksum_of_block(self, i, 0x0, error))
 			return FALSE;
 	}
+	fu_progress_step_done(progress);
 
 	/* get the blobs for each chunk */
 	fd_blobs = g_hash_table_new_full(g_direct_hash,
@@ -540,7 +550,6 @@ fu_wac_device_write_firmware(FuDevice *device,
 	blocks_total = g_hash_table_size(fd_blobs) + 2;
 
 	/* write the data into the flash page */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
 	csum_local = g_new0(guint32, self->flash_descriptors->len);
 	for (guint16 i = 0; i < self->flash_descriptors->len; i++) {
 		FuWacFlashDescriptor *fd = g_ptr_array_index(self->flash_descriptors, i);
@@ -559,7 +568,9 @@ fu_wac_device_write_firmware(FuDevice *device,
 		/* ignore empty blocks */
 		if (fu_common_bytes_is_empty(blob_block)) {
 			g_debug("empty block, ignoring");
-			fu_device_set_progress_full(device, blocks_done++, blocks_total);
+			fu_progress_set_percentage_full(fu_progress_get_child(progress),
+							blocks_done++,
+							blocks_total);
 			continue;
 		}
 
@@ -590,8 +601,11 @@ fu_wac_device_write_firmware(FuDevice *device,
 			return FALSE;
 
 		/* update device progress */
-		fu_device_set_progress_full(device, blocks_done++, blocks_total);
+		fu_progress_set_percentage_full(fu_progress_get_child(progress),
+						blocks_done++,
+						blocks_total);
 	}
+	fu_progress_step_done(progress);
 
 	/* check at least one block was written */
 	if (blocks_done == 0) {
@@ -607,9 +621,6 @@ fu_wac_device_write_firmware(FuDevice *device,
 		if (!fu_wac_device_calculate_checksum_of_block(self, i, error))
 			return FALSE;
 	}
-
-	/* update device progress */
-	fu_device_set_progress_full(device, blocks_done++, blocks_total);
 
 	/* read all CRC of all pages and verify with local CRC */
 	if (!fu_wac_device_ensure_checksums(self, error))
@@ -646,16 +657,14 @@ fu_wac_device_write_firmware(FuDevice *device,
 		if (g_getenv("FWUPD_WACOM_USB_VERBOSE") != NULL)
 			g_debug("matched checksum at block %u of 0x%08x", i, csum_rom);
 	}
-
-	/* update device progress */
-	fu_device_set_progress_full(device, blocks_done++, blocks_total);
+	fu_progress_step_done(progress);
 
 	/* store host CRC into flash */
 	if (!fu_wac_device_write_checksum_table(self, error))
 		return FALSE;
+	fu_progress_step_done(progress);
 
-	/* update progress */
-	fu_device_set_progress_full(device, blocks_total, blocks_total);
+	/* success */
 	return TRUE;
 }
 
@@ -859,7 +868,8 @@ fu_wac_device_close(FuDevice *device, GError **error)
 static gboolean
 fu_wac_device_cleanup(FuDevice *device, FwupdInstallFlags flags, GError **error)
 {
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	FuProgress *progress = fu_device_get_progress_helper(device);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	fu_device_add_flag(device, FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 	return fu_wac_device_update_reset(FU_WAC_DEVICE(device), error);
 }

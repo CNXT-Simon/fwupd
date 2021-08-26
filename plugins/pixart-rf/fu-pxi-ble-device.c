@@ -503,11 +503,12 @@ fu_pxi_ble_device_write_chunk(FuPxiBleDevice *self, FuChunk *chk, GError **error
 static gboolean
 fu_pxi_ble_device_reset(FuPxiBleDevice *self, GError **error)
 {
+	FuProgress *progress = fu_device_get_progress_helper(FU_DEVICE(self));
 	g_autoptr(GByteArray) req = g_byte_array_new();
 	fu_byte_array_append_uint8(req, PXI_HID_DEV_OTA_FEATURE_REPORT_ID);
 	fu_byte_array_append_uint8(req, FU_PXI_DEVICE_CMD_FW_MCU_RESET); /* OTA reset command */
 	fu_byte_array_append_uint8(req, OTA_RESET);			 /* OTA reset reason  */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 
 	if (!fu_pxi_ble_device_set_feature(self, req, error)) {
 		g_prefix_error(error, "failed to reset: ");
@@ -605,7 +606,6 @@ fu_pxi_ble_device_fw_upgrade(FuPxiBleDevice *self, FuFirmware *firmware, GError 
 	g_byte_array_append(req, fw_version, sizeof(fw_version));
 
 	/* send fw upgrade command */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_VERIFY);
 	if (!fu_pxi_ble_device_set_feature(self, req, error))
 		return FALSE;
 
@@ -641,9 +641,16 @@ fu_pxi_ble_device_write_firmware(FuDevice *device,
 				 GError **error)
 {
 	FuPxiBleDevice *self = FU_PXI_BLE_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autoptr(GBytes) fw = NULL;
 	g_autoptr(GPtrArray) chunks = NULL;
 	g_autoptr(GError) error_local = NULL;
+
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_BUSY, 9); /* ota-init */
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 90);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_VERIFY, 1);
 
 	/* get the default image */
 	fw = fu_firmware_get_bytes(firmware, error);
@@ -651,7 +658,6 @@ fu_pxi_ble_device_write_firmware(FuDevice *device,
 		return FALSE;
 
 	/* send fw ota retransmit command to reset status */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_BUSY);
 	if (!fu_pxi_ble_device_fw_ota_check_retransmit(self, error)) {
 		g_prefix_error(error, "failed to OTA check retransmit: ");
 		return FALSE;
@@ -661,6 +667,7 @@ fu_pxi_ble_device_write_firmware(FuDevice *device,
 		return FALSE;
 	if (!fu_pxi_ble_device_fw_ota_init_new(self, g_bytes_get_size(fw), error))
 		return FALSE;
+	fu_progress_step_done(progress);
 
 	/* prepare write fw into device */
 	chunks = fu_chunk_array_new_from_bytes(fw, 0x0, 0x0, FU_PXI_DEVICE_OBJECT_SIZE_MAX);
@@ -671,17 +678,20 @@ fu_pxi_ble_device_write_firmware(FuDevice *device,
 	}
 
 	/* write fw into device */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
 	for (guint i = self->fwstate.offset; i < chunks->len; i++) {
 		FuChunk *chk = g_ptr_array_index(chunks, i);
 		if (!fu_pxi_ble_device_write_chunk(self, chk, error))
 			return FALSE;
-		fu_device_set_progress_full(device, (gsize)i, (gsize)chunks->len);
+		fu_progress_set_percentage_full(fu_progress_get_child(progress),
+						(gsize)self->fwstate.offset + 1,
+						(gsize)chunks->len);
 	}
+	fu_progress_step_done(progress);
 
 	/* fw upgrade command */
 	if (!fu_pxi_ble_device_fw_upgrade(self, firmware, error))
 		return FALSE;
+	fu_progress_step_done(progress);
 
 	/* send device reset command */
 	return fu_pxi_ble_device_reset(self, error);

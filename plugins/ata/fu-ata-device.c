@@ -764,6 +764,7 @@ fu_ata_device_write_firmware(FuDevice *device,
 			     GError **error)
 {
 	FuAtaDevice *self = FU_ATA_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	guint32 chunksz = (guint32)self->transfer_blocks * FU_ATA_BLOCK_SIZE;
 	guint max_size = 0xffff * FU_ATA_BLOCK_SIZE;
 	g_autoptr(GBytes) fw = NULL;
@@ -797,7 +798,7 @@ fu_ata_device_write_firmware(FuDevice *device,
 	}
 
 	/* write each block */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_WRITE);
 	chunks = fu_chunk_array_new_from_bytes(fw, 0x00, 0x00, chunksz);
 	for (guint i = 0; i < chunks->len; i++) {
 		FuChunk *chk = g_ptr_array_index(chunks, i);
@@ -810,12 +811,11 @@ fu_ata_device_write_firmware(FuDevice *device,
 			g_prefix_error(error, "failed to write chunk %u: ", i);
 			return FALSE;
 		}
-		fu_device_set_progress_full(device, (gsize)i, (gsize)chunks->len + 1);
+		fu_progress_set_percentage_full(progress, (gsize)i + 1, (gsize)chunks->len);
 	}
 
 	/* success! */
 	fu_device_add_flag(device, FWUPD_DEVICE_FLAG_NEEDS_ACTIVATION);
-	fu_device_set_progress(device, 100);
 	return TRUE;
 }
 

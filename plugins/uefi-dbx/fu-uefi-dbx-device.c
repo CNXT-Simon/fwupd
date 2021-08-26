@@ -23,6 +23,7 @@ fu_uefi_dbx_device_write_firmware(FuDevice *device,
 				  FwupdInstallFlags install_flags,
 				  GError **error)
 {
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	const guint8 *buf;
 	gsize bufsz = 0;
 	g_autoptr(GBytes) fw = NULL;
@@ -33,7 +34,7 @@ fu_uefi_dbx_device_write_firmware(FuDevice *device,
 		return FALSE;
 
 	/* write entire chunk to efivarfs */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_WRITE);
 	buf = g_bytes_get_data(fw, &bufsz);
 	if (!fu_efivar_set_data(FU_EFIVAR_GUID_SECURITY_DATABASE,
 				"dbx",
@@ -72,6 +73,7 @@ fu_uefi_dbx_device_set_version_number(FuDevice *device, GError **error)
 static FuFirmware *
 fu_uefi_dbx_prepare_firmware(FuDevice *device, GBytes *fw, FwupdInstallFlags flags, GError **error)
 {
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autoptr(FuFirmware) siglist = fu_efi_signature_list_new();
 
 	/* parse dbx */
@@ -80,7 +82,7 @@ fu_uefi_dbx_prepare_firmware(FuDevice *device, GBytes *fw, FwupdInstallFlags fla
 
 	/* validate this is safe to apply */
 	if ((flags & FWUPD_INSTALL_FLAG_FORCE) == 0) {
-		fu_device_set_status(device, FWUPD_STATUS_DEVICE_VERIFY);
+		fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_VERIFY);
 		if (!fu_uefi_dbx_signature_list_validate(FU_EFI_SIGNATURE_LIST(siglist), error)) {
 			g_prefix_error(error,
 				       "Blocked executable in the ESP, "

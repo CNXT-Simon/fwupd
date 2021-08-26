@@ -502,6 +502,7 @@ fu_dell_dock_mst_erase_bank(FuDevice *proxy, MSTBank bank, GError **error)
 static gboolean
 fu_dell_dock_write_flash_bank(FuDevice *device, GBytes *blob_fw, MSTBank bank, GError **error)
 {
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	const MSTBankAttributes *attribs = NULL;
 	gsize write_size = 32;
 	guint end;
@@ -527,7 +528,7 @@ fu_dell_dock_write_flash_bank(FuDevice *device, GBytes *blob_fw, MSTBank bank, G
 				       i);
 			return FALSE;
 		}
-		fu_device_set_progress_full(device, i - attribs->start, end - attribs->start);
+		fu_progress_set_percentage_full(progress, i - attribs->start, end - attribs->start);
 	}
 
 	return TRUE;
@@ -713,6 +714,7 @@ fu_dell_dock_mst_write_fw(FuDevice *device,
 			  GError **error)
 {
 	FuDellDockMst *self = FU_DELL_DOCK_MST(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	MSTBank bank_in_use = 0;
 	guint retries = 2;
 	gboolean checksum = FALSE;
@@ -725,6 +727,11 @@ fu_dell_dock_mst_write_fw(FuDevice *device,
 	g_return_val_if_fail(device != NULL, FALSE);
 	g_return_val_if_fail(FU_IS_FIRMWARE(firmware), FALSE);
 	g_return_val_if_fail(fu_device_get_proxy(device) != NULL, FALSE);
+
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_BUSY, 10); /* enable */
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 90);
 
 	/* get default image */
 	fw = fu_firmware_get_bytes(firmware, error);
@@ -764,6 +771,7 @@ fu_dell_dock_mst_write_fw(FuDevice *device,
 	/* ESM needs special handling during flash process*/
 	if (!fu_dell_dock_mst_stop_esm(fu_device_get_proxy(device), error))
 		return FALSE;
+	fu_progress_step_done(progress);
 
 	/* Write each bank in order */
 	for (guint phase = 0; phase < 2; phase++) {
@@ -780,13 +788,12 @@ fu_dell_dock_mst_write_fw(FuDevice *device,
 		}
 		g_debug("MST: bank %u needs to be updated", order[phase]);
 		for (guint i = 0; i < retries; i++) {
-			fu_device_set_progress_full(device, 0, 100);
-			fu_device_set_status(device, FWUPD_STATUS_DEVICE_ERASE);
+			fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_ERASE);
 			if (!fu_dell_dock_mst_erase_bank(fu_device_get_proxy(device),
 							 order[phase],
 							 error))
 				return FALSE;
-			fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
+			fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_WRITE);
 			if (!fu_dell_dock_write_flash_bank(device, fw, order[phase], error))
 				return FALSE;
 			if (!fu_dell_dock_mst_checksum_bank(fu_device_get_proxy(device),
@@ -795,7 +802,7 @@ fu_dell_dock_mst_write_fw(FuDevice *device,
 							    &checksum,
 							    error))
 				return FALSE;
-			fu_device_set_status(device, FWUPD_STATUS_DEVICE_BUSY);
+			fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_BUSY);
 			if (!checksum) {
 				g_debug("MST: Failed to verify checksum on bank %u", order[phase]);
 				continue;
@@ -812,15 +819,17 @@ fu_dell_dock_mst_write_fw(FuDevice *device,
 				    order[phase]);
 			return FALSE;
 		}
+		fu_progress_set_percentage_full(fu_progress_get_child(progress), phase + 1, 2);
 	}
 	/* invalidate the previous bank */
 	if (!fu_dell_dock_mst_invalidate_bank(fu_device_get_proxy(device), bank_in_use, error)) {
 		g_prefix_error(error, "failed to invalidate bank %u: ", bank_in_use);
 		return FALSE;
 	}
+	fu_progress_step_done(progress);
 
 	/* dock will reboot to re-read; this is to appease the daemon */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	fu_device_set_version_format(device, FWUPD_VERSION_FORMAT_TRIPLET);
 	fu_device_set_version(device, dynamic_version);
 

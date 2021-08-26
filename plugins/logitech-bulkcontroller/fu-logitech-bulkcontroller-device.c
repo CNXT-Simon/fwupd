@@ -422,11 +422,18 @@ fu_logitech_bulkcontroller_device_write_firmware(FuDevice *device,
 						 GError **error)
 {
 	FuLogitechBulkcontrollerDevice *self = FU_LOGITECH_BULKCONTROLLER_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autofree gchar *base64hash = NULL;
 	g_autoptr(GByteArray) end_pkt = g_byte_array_new();
 	g_autoptr(GByteArray) start_pkt = g_byte_array_new();
 	g_autoptr(GBytes) fw = NULL;
 	g_autoptr(GPtrArray) chunks = NULL;
+
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_BUSY, 5);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 90);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_BUSY, 5);
 
 	/* get default image */
 	fw = fu_firmware_get_bytes(firmware, error);
@@ -449,6 +456,7 @@ fu_logitech_bulkcontroller_device_write_firmware(FuDevice *device,
 		g_prefix_error(error, "error in writing start transfer packet: ");
 		return FALSE;
 	}
+	fu_progress_step_done(progress);
 
 	/* each block */
 	chunks = fu_chunk_array_new_from_bytes(fw, 0x0, 0x0, PAYLOAD_SIZE);
@@ -463,8 +471,11 @@ fu_logitech_bulkcontroller_device_write_firmware(FuDevice *device,
 			g_prefix_error(error, "failed to send data packet 0x%x: ", i);
 			return FALSE;
 		}
-		fu_device_set_progress_full(FU_DEVICE(self), i + 1, chunks->len);
+		fu_progress_set_percentage_full(fu_progress_get_child(progress),
+						i + 1,
+						chunks->len);
 	}
+	fu_progress_step_done(progress);
 
 	/* sending end transfer */
 	base64hash = fu_logitech_bulkcontroller_device_compute_hash(fw);
@@ -485,6 +496,7 @@ fu_logitech_bulkcontroller_device_write_firmware(FuDevice *device,
 		g_prefix_error(error, "error in writing finish transfer packet: ");
 		return FALSE;
 	}
+	fu_progress_step_done(progress);
 
 	/* success! */
 	return TRUE;

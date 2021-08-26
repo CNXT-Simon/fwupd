@@ -54,6 +54,7 @@
 #include "fu-plugin-list.h"
 #include "fu-plugin-private.h"
 #include "fu-plugin.h"
+#include "fu-progress.h"
 #include "fu-quirks.h"
 #include "fu-remote-list.h"
 #include "fu-security-attr.h"
@@ -206,14 +207,14 @@ fu_engine_progress_notify_cb(FuDevice *device, GParamSpec *pspec, FuEngine *self
 {
 	if (fu_device_get_status(device) == FWUPD_STATUS_UNKNOWN)
 		return;
-	fu_engine_set_percentage(self, fu_device_get_progress(device));
 	fu_engine_emit_device_changed(self, device);
 }
 
 static void
 fu_engine_status_notify_cb(FuDevice *device, GParamSpec *pspec, FuEngine *self)
 {
-	fu_engine_set_status(self, fu_device_get_status(device));
+	FuProgress *progress = fu_device_get_progress_helper(device);
+	fu_engine_set_status(self, fu_progress_get_status(progress));
 	fu_engine_emit_device_changed(self, device);
 }
 
@@ -2025,6 +2026,13 @@ fu_engine_composite_cleanup(FuEngine *self, GPtrArray *devices, GError **error)
 	return TRUE;
 }
 
+static void
+fu_progress_percentage_changed_cb(FuProgress *progress, guint percentage, FuEngine *self)
+{
+	/* this is global for all the tasks and divisions */
+	fu_engine_set_percentage(self, percentage);
+}
+
 /**
  * fu_engine_install_tasks:
  * @self: a #FuEngine
@@ -2054,6 +2062,7 @@ fu_engine_install_tasks(FuEngine *self,
 	g_autoptr(FuIdleLocker) locker = NULL;
 	g_autoptr(GPtrArray) devices = NULL;
 	g_autoptr(GPtrArray) devices_new = NULL;
+	g_autoptr(FuProgress) progress = fu_progress_new();
 
 	/* do not allow auto-shutdown during this time */
 	locker = fu_idle_locker_new(self->idle, "update");
@@ -2074,8 +2083,16 @@ fu_engine_install_tasks(FuEngine *self,
 	}
 
 	/* all authenticated, so install all the things */
+	fu_progress_set_steps(progress, install_tasks->len);
+	fu_progress_set_profile(progress, g_getenv("FWUPD_PROGRESS_PROFILE") != NULL);
+	g_signal_connect(progress,
+			 "percentage-changed",
+			 G_CALLBACK(fu_progress_percentage_changed_cb),
+			 self);
 	for (guint i = 0; i < install_tasks->len; i++) {
 		FuInstallTask *task = g_ptr_array_index(install_tasks, i);
+		fu_device_set_progress_helper(fu_install_task_get_device(task),
+					      fu_progress_get_child(progress));
 		if (!fu_engine_install(self, task, blob_cab, flags, feature_flags, error)) {
 			g_autoptr(GError) error_local = NULL;
 			if (!fu_engine_composite_cleanup(self, devices, &error_local)) {
@@ -2084,13 +2101,15 @@ fu_engine_install_tasks(FuEngine *self,
 			}
 			return FALSE;
 		}
+		fu_progress_step_done(progress);
 	}
 
 	/* set all the device statuses back to unknown */
 	for (guint i = 0; i < install_tasks->len; i++) {
 		FuInstallTask *task = g_ptr_array_index(install_tasks, i);
 		FuDevice *device = fu_install_task_get_device(task);
-		fu_device_set_status(device, FWUPD_STATUS_UNKNOWN);
+		FuProgress *progress_local = fu_device_get_progress_helper(device);
+		fu_progress_set_status(progress_local, FWUPD_STATUS_UNKNOWN);
 	}
 
 	/* get a new list of devices in case they replugged */
@@ -2273,6 +2292,7 @@ fu_engine_schedule_update(FuEngine *self,
 			  FwupdInstallFlags flags,
 			  GError **error)
 {
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	gchar tmpname[] = {"XXXXXX.cab"};
 	g_autofree gchar *dirname = NULL;
 	g_autofree gchar *filename = NULL;
@@ -2309,7 +2329,7 @@ fu_engine_schedule_update(FuEngine *self,
 	filename = g_build_filename(dirname, tmpname, NULL);
 
 	/* just copy to the temp file */
-	fu_device_set_status(device, FWUPD_STATUS_SCHEDULING);
+	fu_progress_set_status(progress, FWUPD_STATUS_SCHEDULING);
 	if (!g_file_set_contents(filename,
 				 g_bytes_get_data(blob_cab, NULL),
 				 (gssize)g_bytes_get_size(blob_cab),
@@ -2329,7 +2349,6 @@ fu_engine_schedule_update(FuEngine *self,
 		return FALSE;
 
 	/* next boot we run offline */
-	fu_device_set_progress(device, 100);
 	return fu_engine_offline_setup(error);
 }
 
@@ -2412,7 +2431,8 @@ fu_engine_install_release(FuEngine *self,
 	/* install firmware blob */
 	version_orig = g_strdup(fu_device_get_version(device));
 	if (!fu_engine_install_blob(self, device, blob_fw2, flags, feature_flags, &error_local)) {
-		fu_device_set_status(device, FWUPD_STATUS_IDLE);
+		FuProgress *progress = fu_device_get_progress_helper(device);
+		fu_progress_set_status(progress, FWUPD_STATUS_IDLE);
 		if (g_error_matches(error_local, FWUPD_ERROR, FWUPD_ERROR_AC_POWER_REQUIRED) ||
 		    g_error_matches(error_local, FWUPD_ERROR, FWUPD_ERROR_BATTERY_LEVEL_TOO_LOW) ||
 		    g_error_matches(error_local, FWUPD_ERROR, FWUPD_ERROR_NEEDS_USER_ACTION) ||

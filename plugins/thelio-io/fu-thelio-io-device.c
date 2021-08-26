@@ -63,6 +63,7 @@ fu_thelio_io_device_probe(FuDevice *device, GError **error)
 static gboolean
 fu_thelio_io_device_detach(FuDevice *device, GError **error)
 {
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	const gchar *devpath;
 	g_autofree gchar *fn = NULL;
 	g_autoptr(FuIOChannel) io_channel = NULL;
@@ -73,7 +74,7 @@ fu_thelio_io_device_detach(FuDevice *device, GError **error)
 	udev_device = fu_usb_device_find_udev_device(FU_USB_DEVICE(device), error);
 	if (udev_device == NULL)
 		return FALSE;
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 
 	devpath = g_udev_device_get_sysfs_path(udev_device);
 	if (G_UNLIKELY(devpath == NULL)) {

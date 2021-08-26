@@ -616,6 +616,7 @@ fu_synaptics_cxaudio_device_write_firmware(FuDevice *device,
 					   GError **error)
 {
 	FuSynapticsCxaudioDevice *self = FU_SYNAPTICS_CXAUDIO_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	GPtrArray *records = fu_srec_firmware_get_records(FU_SREC_FIRMWARE(firmware));
 	FuSynapticsCxaudioFileKind file_kind;
 
@@ -683,7 +684,7 @@ fu_synaptics_cxaudio_device_write_firmware(FuDevice *device,
 	}
 
 	/* perform the actual write */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_WRITE);
 	for (guint i = 0; i < records->len; i++) {
 		FuSrecFirmwareRecord *rcd = g_ptr_array_index(records, i);
 		if (rcd->kind != FU_FIRMWARE_SREC_RECORD_KIND_S3_DATA_32)
@@ -704,7 +705,7 @@ fu_synaptics_cxaudio_device_write_firmware(FuDevice *device,
 				       rcd->buf->len);
 			return FALSE;
 		}
-		fu_device_set_progress_full(device, (gsize)i, (gsize)records->len);
+		fu_progress_set_percentage_full(progress, (gsize)i + 1, (gsize)records->len);
 	}
 
 	/* in case of a full FW upgrade invalidate the old FW patch (if any)
@@ -757,6 +758,7 @@ static gboolean
 fu_synaptics_cxaudio_device_attach(FuDevice *device, GError **error)
 {
 	FuSynapticsCxaudioDevice *self = FU_SYNAPTICS_CXAUDIO_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	guint8 tmp = 1 << 6;
 	g_autoptr(GError) error_local = NULL;
 
@@ -765,7 +767,7 @@ fu_synaptics_cxaudio_device_attach(FuDevice *device, GError **error)
 		return TRUE;
 
 	/* wait for re-enumeration */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	fu_device_add_flag(device, FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 
 	/* this fails on success */

@@ -47,6 +47,7 @@ static gboolean
 fu_jabra_device_prepare(FuDevice *device, FwupdInstallFlags flags, GError **error)
 {
 	FuJabraDevice *self = FU_JABRA_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	GUsbDevice *usb_device = fu_usb_device_get_dev(FU_USB_DEVICE(device));
 	gsize magiclen = strlen(self->magic);
 	guint8 adr = 0x00;
@@ -110,7 +111,7 @@ fu_jabra_device_prepare(FuDevice *device, FwupdInstallFlags flags, GError **erro
 	}
 
 	/* wait for device to re-appear and be added to the dfu plugin */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	fu_device_add_flag(device, FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 	return TRUE;
 }

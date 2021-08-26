@@ -419,11 +419,12 @@ fu_solokey_device_setup(FuDevice *device, GError **error)
 static gboolean
 fu_solokey_device_verify(FuSolokeyDevice *self, GBytes *fw_sig, GError **error)
 {
+	FuProgress *progress = fu_device_get_progress_helper(FU_DEVICE(self));
 	g_autoptr(GByteArray) req = g_byte_array_new();
 	g_autoptr(GByteArray) res = NULL;
 	g_autoptr(GByteArray) sig = g_byte_array_new();
 
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_VERIFY);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_VERIFY);
 	fu_byte_array_append_bytes(sig, fw_sig);
 	fu_solokey_device_exchange(req, SOLO_BOOTLOADER_DONE, 0x00, sig);
 	res = fu_solokey_device_packet(self, SOLO_BOOTLOADER_HID_CMD_BOOT, req, error);
@@ -451,9 +452,15 @@ fu_solokey_device_write_firmware(FuDevice *device,
 				 GError **error)
 {
 	FuSolokeyDevice *self = FU_SOLOKEY_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autoptr(GBytes) fw = NULL;
 	g_autoptr(GBytes) fw_sig = NULL;
 	g_autoptr(GPtrArray) chunks = NULL;
+
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 90);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_VERIFY, 10);
 
 	/* build packets */
 	fw = fu_firmware_get_bytes(firmware, error);
@@ -465,7 +472,6 @@ fu_solokey_device_write_firmware(FuDevice *device,
 					       2048);
 
 	/* write each block */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
 	for (guint i = 0; i < chunks->len; i++) {
 		FuChunk *chk = g_ptr_array_index(chunks, i);
 		g_autoptr(GByteArray) buf = g_byte_array_new();
@@ -490,14 +496,22 @@ fu_solokey_device_write_firmware(FuDevice *device,
 		}
 
 		/* update progress */
-		fu_device_set_progress_full(device, (gsize)i, (gsize)chunks->len);
+		fu_progress_set_percentage_full(fu_progress_get_child(progress),
+						(gsize)i + 1,
+						(gsize)chunks->len);
 	}
+	fu_progress_step_done(progress);
 
 	/* verify the signature and reboot back to runtime */
 	fw_sig = fu_firmware_get_image_by_id_bytes(firmware, FU_FIRMWARE_ID_SIGNATURE, error);
 	if (fw_sig == NULL)
 		return FALSE;
-	return fu_solokey_device_verify(self, fw_sig, error);
+	if (!fu_solokey_device_verify(self, fw_sig, error))
+		return FALSE;
+	fu_progress_step_done(progress);
+
+	/* success */
+	return TRUE;
 }
 
 static void

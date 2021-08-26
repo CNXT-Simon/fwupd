@@ -29,7 +29,10 @@ fu_synaprom_device_cmd_send(FuSynapromDevice *device,
 			    guint timeout_ms,
 			    GError **error);
 gboolean
-fu_synaprom_device_write_fw(FuSynapromDevice *self, GBytes *fw, GError **error);
+fu_synaprom_device_write_fw(FuSynapromDevice *self,
+			    GBytes *fw,
+			    FuProgress *progress,
+			    GError **error);
 
 /* for self tests */
 void

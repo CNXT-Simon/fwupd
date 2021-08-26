@@ -111,6 +111,7 @@ static gboolean
 fu_ep963x_device_detach(FuDevice *device, GError **error)
 {
 	FuEp963xDevice *self = FU_EP963X_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	const guint8 buf[] = {'E', 'P', '9', '6', '3'};
 	g_autoptr(GError) error_local = NULL;
 
@@ -135,7 +136,7 @@ fu_ep963x_device_detach(FuDevice *device, GError **error)
 		return FALSE;
 	}
 
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	fu_device_add_flag(device, FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 	return TRUE;
 }
@@ -144,6 +145,7 @@ static gboolean
 fu_ep963x_device_attach(FuDevice *device, GError **error)
 {
 	FuEp963xDevice *self = FU_EP963X_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autoptr(GError) error_local = NULL;
 
 	/* sanity check */
@@ -152,7 +154,7 @@ fu_ep963x_device_attach(FuDevice *device, GError **error)
 		return TRUE;
 	}
 
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	if (!fu_ep963x_device_write(self,
 				    FU_EP963_USB_CONTROL_ID,
 				    FU_EP963_OPCODE_SUBMCU_PROGRAM_FINISHED,
@@ -248,9 +250,15 @@ fu_ep963x_device_write_firmware(FuDevice *device,
 				GError **error)
 {
 	FuEp963xDevice *self = FU_EP963X_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autoptr(GBytes) fw = NULL;
 	g_autoptr(GError) error_local = NULL;
 	g_autoptr(GPtrArray) blocks = NULL;
+
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_BUSY, 5); /* ICP */
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 95);
 
 	/* get default image */
 	fw = fu_firmware_get_bytes(firmware, error);
@@ -258,7 +266,6 @@ fu_ep963x_device_write_firmware(FuDevice *device,
 		return FALSE;
 
 	/* reset the block index */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
 	if (!fu_ep963x_device_write(self,
 				    FU_EP963_USB_CONTROL_ID,
 				    FU_EP963_OPCODE_SUBMCU_ENTER_ICP,
@@ -272,6 +279,7 @@ fu_ep963x_device_write_firmware(FuDevice *device,
 			    error_local->message);
 		return FALSE;
 	}
+	fu_progress_step_done(progress);
 
 	/* write each block */
 	blocks = fu_chunk_array_new_from_bytes(fw, 0x00, 0x00, FU_EP963_TRANSFER_BLOCK_SIZE);
@@ -343,8 +351,11 @@ fu_ep963x_device_write_firmware(FuDevice *device,
 			return FALSE;
 
 		/* update progress */
-		fu_device_set_progress_full(device, (gsize)i, (gsize)chunks->len);
+		fu_progress_set_percentage_full(fu_progress_get_child(progress),
+						(gsize)i + 1,
+						(gsize)chunks->len);
 	}
+	fu_progress_step_done(progress);
 
 	/* success! */
 	return TRUE;

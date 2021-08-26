@@ -349,10 +349,11 @@ static gboolean
 fu_vli_usbhub_device_attach(FuDevice *device, GError **error)
 {
 	FuDevice *proxy = fu_device_get_proxy_with_fallback(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autoptr(GError) error_local = NULL;
 
 	/* update UI */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 
 	/* some hardware has to toggle a GPIO to reset the entire PCB */
 	if (fu_vli_device_get_kind(FU_VLI_DEVICE(proxy)) == FU_VLI_DEVICE_KIND_VL817 &&
@@ -840,11 +841,19 @@ fu_vli_usbhub_device_prepare_firmware(FuDevice *device,
 }
 
 static gboolean
-fu_vli_usbhub_device_update_v1(FuVliUsbhubDevice *self, FuFirmware *firmware, GError **error)
+fu_vli_usbhub_device_update_v1(FuVliUsbhubDevice *self,
+			       FuFirmware *firmware,
+			       FuProgress *progress,
+			       GError **error)
 {
 	gsize bufsz = 0;
 	const guint8 *buf;
 	g_autoptr(GBytes) fw = NULL;
+
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_ERASE, 20);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 80);
 
 	/* simple image */
 	fw = fu_firmware_get_bytes(firmware, error);
@@ -852,47 +861,65 @@ fu_vli_usbhub_device_update_v1(FuVliUsbhubDevice *self, FuFirmware *firmware, GE
 		return FALSE;
 
 	/* erase */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_ERASE);
-	if (!fu_vli_device_spi_erase_all(FU_VLI_DEVICE(self), error)) {
+	if (!fu_vli_device_spi_erase_all(FU_VLI_DEVICE(self),
+					 fu_progress_get_child(progress),
+					 error)) {
 		g_prefix_error(error, "failed to erase chip: ");
 		return FALSE;
 	}
+	fu_progress_step_done(progress);
 
 	/* write in chunks */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_WRITE);
 	buf = g_bytes_get_data(fw, &bufsz);
-	if (!fu_vli_device_spi_write(FU_VLI_DEVICE(self), 0x0, buf, bufsz, error))
+	if (!fu_vli_device_spi_write(FU_VLI_DEVICE(self),
+				     0x0,
+				     buf,
+				     bufsz,
+				     fu_progress_get_child(progress),
+				     error))
 		return FALSE;
 
 	/* success */
+	fu_progress_step_done(progress);
 	return TRUE;
 }
 
 /* if no header1 or ROM code update, write data directly */
 static gboolean
-fu_vli_usbhub_device_update_v2_recovery(FuVliUsbhubDevice *self, GBytes *fw, GError **error)
+fu_vli_usbhub_device_update_v2_recovery(FuVliUsbhubDevice *self,
+					GBytes *fw,
+					FuProgress *progress,
+					GError **error)
 {
 	gsize bufsz = 0;
 	const guint8 *buf = g_bytes_get_data(fw, &bufsz);
 
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_ERASE, 20);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 80);
+
 	/* erase */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_ERASE);
 	for (guint32 addr = 0; addr < bufsz; addr += 0x1000) {
 		if (!fu_vli_device_spi_erase_sector(FU_VLI_DEVICE(self), addr, error)) {
 			g_prefix_error(error, "failed to erase sector @0x%x: ", addr);
 			return FALSE;
 		}
-		fu_device_set_progress_full(FU_DEVICE(self), (gsize)addr, bufsz);
+		fu_progress_set_percentage_full(fu_progress_get_child(progress),
+						(gsize)addr,
+						bufsz);
 	}
+	fu_progress_step_done(progress);
 
 	/* write in chunks */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_WRITE);
 	if (!fu_vli_device_spi_write(FU_VLI_DEVICE(self),
 				     VLI_USBHUB_FLASHMAP_ADDR_HD1,
 				     buf,
 				     bufsz,
+				     fu_progress_get_child(progress),
 				     error))
 		return FALSE;
+	fu_progress_step_done(progress);
 
 	/* success */
 	return TRUE;
@@ -909,7 +936,10 @@ fu_vli_usbhub_device_hd1_is_valid(FuVliUsbhubHeader *hdr)
 }
 
 static gboolean
-fu_vli_usbhub_device_hd1_recover(FuVliUsbhubDevice *self, FuVliUsbhubHeader *hdr, GError **error)
+fu_vli_usbhub_device_hd1_recover(FuVliUsbhubDevice *self,
+				 FuVliUsbhubHeader *hdr,
+				 FuProgress *progress,
+				 GError **error)
 {
 	/* point to HD2, i.e. updated firmware */
 	if (hdr->next_ptr != VLI_USBHUB_FLASHMAP_IDX_HD2) {
@@ -930,6 +960,7 @@ fu_vli_usbhub_device_hd1_recover(FuVliUsbhubDevice *self, FuVliUsbhubHeader *hdr
 					   VLI_USBHUB_FLASHMAP_ADDR_HD1,
 					   (const guint8 *)hdr,
 					   sizeof(FuVliUsbhubHeader),
+					   progress,
 					   error)) {
 		g_prefix_error(error,
 			       "failed to write header1 block at 0x%x: ",
@@ -943,7 +974,10 @@ fu_vli_usbhub_device_hd1_recover(FuVliUsbhubDevice *self, FuVliUsbhubHeader *hdr
 }
 
 static gboolean
-fu_vli_usbhub_device_update_v2(FuVliUsbhubDevice *self, FuFirmware *firmware, GError **error)
+fu_vli_usbhub_device_update_v2(FuVliUsbhubDevice *self,
+			       FuFirmware *firmware,
+			       FuProgress *progress,
+			       GError **error)
 {
 	gsize buf_fwsz = 0;
 	guint32 hd1_fw_sz;
@@ -974,11 +1008,15 @@ fu_vli_usbhub_device_update_v2(FuVliUsbhubDevice *self, FuFirmware *firmware, GE
 							   VLI_USBHUB_FLASHMAP_ADDR_HD1_BACKUP,
 							   (const guint8 *)&self->hd1_hdr,
 							   sizeof(hdr),
+							   progress,
 							   error)) {
 				g_prefix_error(error, "failed to write block at header 1: ");
 				return FALSE;
 			}
-			if (!fu_vli_usbhub_device_hd1_recover(self, &self->hd1_hdr, error)) {
+			if (!fu_vli_usbhub_device_hd1_recover(self,
+							      &self->hd1_hdr,
+							      progress,
+							      error)) {
 				g_prefix_error(error, "failed to write header: ");
 				return FALSE;
 			}
@@ -999,9 +1037,9 @@ fu_vli_usbhub_device_update_v2(FuVliUsbhubDevice *self, FuFirmware *firmware, GE
 		}
 		if (!fu_vli_usbhub_device_hd1_is_valid(&self->hd1_hdr)) {
 			g_debug("backup header is also invalid, starting recovery");
-			return fu_vli_usbhub_device_update_v2_recovery(self, fw, error);
+			return fu_vli_usbhub_device_update_v2_recovery(self, fw, progress, error);
 		}
-		if (!fu_vli_usbhub_device_hd1_recover(self, &self->hd1_hdr, error)) {
+		if (!fu_vli_usbhub_device_hd1_recover(self, &self->hd1_hdr, progress, error)) {
 			g_prefix_error(error, "failed to get root header in backup zone: ");
 			return FALSE;
 		}
@@ -1027,21 +1065,32 @@ fu_vli_usbhub_device_update_v2(FuVliUsbhubDevice *self, FuFirmware *firmware, GE
 	hd2_fw_offset = GUINT16_FROM_BE(hdr.usb3_fw_addr);
 	g_debug("FW2 @0x%x (length 0x%x, offset 0x%x)", hd2_fw_addr, hd2_fw_sz, hd2_fw_offset);
 
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_ERASE, 10);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 90);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_BUSY, 10); /* HD2 */
+
 	/* make space */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_ERASE);
-	if (!fu_vli_device_spi_erase(FU_VLI_DEVICE(self), hd2_fw_addr, hd2_fw_sz, error))
+	if (!fu_vli_device_spi_erase(FU_VLI_DEVICE(self),
+				     hd2_fw_addr,
+				     hd2_fw_sz,
+				     fu_progress_get_child(progress),
+				     error))
 		return FALSE;
+	fu_progress_step_done(progress);
 
 	/* perform the actual write */
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_WRITE);
 	if (!fu_vli_device_spi_write(FU_VLI_DEVICE(self),
 				     hd2_fw_addr,
 				     buf_fw + hd2_fw_offset,
 				     hd2_fw_sz,
+				     fu_progress_get_child(progress),
 				     error)) {
 		g_prefix_error(error, "failed to write payload: ");
 		return FALSE;
 	}
+	fu_progress_step_done(progress);
 
 	/* map into header */
 	if (!fu_memcpy_safe((guint8 *)&self->hd2_hdr,
@@ -1072,10 +1121,12 @@ fu_vli_usbhub_device_update_v2(FuVliUsbhubDevice *self, FuFirmware *firmware, GE
 					   VLI_USBHUB_FLASHMAP_ADDR_HD2,
 					   (const guint8 *)&self->hd2_hdr,
 					   sizeof(self->hd2_hdr),
+					   fu_progress_get_child(progress),
 					   error)) {
 		g_prefix_error(error, "failed to write HD2: ");
 		return FALSE;
 	}
+	fu_progress_step_done(progress);
 
 	/* success */
 	return TRUE;
@@ -1085,10 +1136,12 @@ static GBytes *
 fu_vli_usbhub_device_dump_firmware(FuDevice *device, GError **error)
 {
 	FuVliUsbhubDevice *self = FU_VLI_USBHUB_DEVICE(device);
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_READ);
+	FuProgress *progress = fu_device_get_progress_helper(device);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_READ);
 	return fu_vli_device_spi_read(FU_VLI_DEVICE(self),
 				      0x0,
 				      fu_device_get_firmware_size_max(device),
+				      progress,
 				      error);
 }
 
@@ -1099,6 +1152,7 @@ fu_vli_usbhub_device_write_firmware(FuDevice *device,
 				    GError **error)
 {
 	FuVliUsbhubDevice *self = FU_VLI_USBHUB_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 
 	/* disable powersaving if required */
 	if (self->disable_powersave) {
@@ -1110,9 +1164,9 @@ fu_vli_usbhub_device_write_firmware(FuDevice *device,
 
 	/* use correct method */
 	if (self->update_protocol == 0x1)
-		return fu_vli_usbhub_device_update_v1(self, firmware, error);
+		return fu_vli_usbhub_device_update_v1(self, firmware, progress, error);
 	if (self->update_protocol == 0x2)
-		return fu_vli_usbhub_device_update_v2(self, firmware, error);
+		return fu_vli_usbhub_device_update_v2(self, firmware, progress, error);
 
 	/* not sure what to do */
 	g_set_error(error,

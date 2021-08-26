@@ -35,6 +35,7 @@ fu_flashrom_internal_device_init(FuFlashromInternalDevice *self)
 static gboolean
 fu_flashrom_internal_device_prepare(FuDevice *device, FwupdInstallFlags flags, GError **error)
 {
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autofree gchar *firmware_orig = NULL;
 	g_autofree gchar *localstatedir = NULL;
 	g_autofree gchar *basename = NULL;
@@ -52,7 +53,7 @@ fu_flashrom_internal_device_prepare(FuDevice *device, FwupdInstallFlags flags, G
 		g_autofree guint8 *newcontents = g_malloc0(flash_size);
 		g_autoptr(GBytes) buf = NULL;
 
-		fu_device_set_status(device, FWUPD_STATUS_DEVICE_READ);
+		fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_READ);
 		if (flashrom_image_read(flashctx, newcontents, flash_size)) {
 			g_set_error_literal(error,
 					    FWUPD_ERROR,
@@ -75,6 +76,7 @@ fu_flashrom_internal_device_write_firmware(FuDevice *device,
 					   GError **error)
 {
 	FuFlashromDevice *parent = FU_FLASHROM_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	struct flashrom_flashctx *flashctx = fu_flashrom_device_get_flashctx(parent);
 	gsize flash_size = fu_flashrom_device_get_flash_size(parent);
 	struct flashrom_layout *layout;
@@ -84,6 +86,11 @@ fu_flashrom_internal_device_write_firmware(FuDevice *device,
 	g_autoptr(GBytes) blob_fw = fu_firmware_get_bytes(firmware, error);
 	if (blob_fw == NULL)
 		return FALSE;
+
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 90);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_VERIFY, 10);
 
 	buf = g_bytes_get_data(blob_fw, &sz);
 
@@ -115,9 +122,6 @@ fu_flashrom_internal_device_write_firmware(FuDevice *device,
 			    (guint)flash_size);
 		return FALSE;
 	}
-
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
-	fu_device_set_progress(device, 0); /* urgh */
 	rc = flashrom_image_write(flashctx, (void *)buf, sz, NULL /* refbuffer */);
 	if (rc != 0) {
 		g_set_error(error,
@@ -127,12 +131,13 @@ fu_flashrom_internal_device_write_firmware(FuDevice *device,
 			    rc);
 		return FALSE;
 	}
+	fu_progress_step_done(progress);
 
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_VERIFY);
 	if (flashrom_image_verify(flashctx, (void *)buf, sz)) {
 		g_set_error(error, FWUPD_ERROR, FWUPD_ERROR_WRITE, "image verify failed");
 		return FALSE;
 	}
+	fu_progress_step_done(progress);
 	flashrom_layout_release(layout);
 
 	/* success */

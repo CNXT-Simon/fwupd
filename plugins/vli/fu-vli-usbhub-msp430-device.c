@@ -143,6 +143,7 @@ fu_vli_usbhub_msp430_device_detach(FuDevice *device, GError **error)
 {
 	FuVliUsbhubDevice *parent = FU_VLI_USBHUB_DEVICE(fu_device_get_parent(device));
 	FuVliUsbhubI2cStatus status = 0xff;
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autoptr(FuDeviceLocker) locker = NULL;
 	const guint8 buf[] = {
 	    I2C_ADDR_WRITE,
@@ -157,8 +158,8 @@ fu_vli_usbhub_msp430_device_detach(FuDevice *device, GError **error)
 		return FALSE;
 
 	/* avoid power instability by waiting T1 */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
-	fu_device_sleep_with_progress(device, 1); /* seconds */
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_sleep(progress, 1000);
 
 	/* check the device came back */
 	if (!fu_vli_usbhub_device_i2c_read_status(parent, &status, error)) {
@@ -229,6 +230,7 @@ fu_vli_usbhub_msp430_device_write_firmware(FuDevice *device,
 					   GError **error)
 {
 	FuVliUsbhubDevice *parent = FU_VLI_USBHUB_DEVICE(fu_device_get_parent(device));
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	GPtrArray *records = fu_ihex_firmware_get_records(FU_IHEX_FIRMWARE(firmware));
 	g_autoptr(FuDeviceLocker) locker = NULL;
 
@@ -238,7 +240,7 @@ fu_vli_usbhub_msp430_device_write_firmware(FuDevice *device,
 		return FALSE;
 
 	/* transfer by I²C write, and check status by I²C read */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_WRITE);
 	for (guint j = 0; j < records->len; j++) {
 		FuIhexFirmwareRecord *rcd = g_ptr_array_index(records, j);
 		FuVliUsbhubDeviceRequest req = {0x0};
@@ -289,12 +291,12 @@ fu_vli_usbhub_msp430_device_write_firmware(FuDevice *device,
 				     &req,
 				     error))
 			return FALSE;
-		fu_device_set_progress_full(device, (gsize)j, (gsize)records->len);
+		fu_progress_set_percentage_full(progress, (gsize)j + 1, (gsize)records->len);
 	}
 
 	/* the device automatically reboots */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
-	fu_device_set_progress(device, 0);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_percentage(progress, 0);
 	fu_device_add_flag(device, FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 
 	/* success */

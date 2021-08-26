@@ -65,6 +65,7 @@ fu_dell_dock_status_write(FuDevice *device,
 {
 	FuDellDockStatus *self = FU_DELL_DOCK_STATUS(device);
 	FuDevice *parent;
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	gsize length = 0;
 	guint32 status_version = 0;
 	const guint8 *data;
@@ -96,7 +97,7 @@ fu_dell_dock_status_write(FuDevice *device,
 		return FALSE;
 
 	/* dock will reboot to re-read; this is to appease the daemon */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	fu_device_set_version_format(device, FWUPD_VERSION_FORMAT_QUAD);
 	fu_device_set_version(device, dynamic_version);
 	return TRUE;

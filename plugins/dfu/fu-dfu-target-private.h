@@ -30,10 +30,6 @@ fu_dfu_target_set_alt_setting(FuDfuTarget *self, guint8 alt_setting);
 void
 fu_dfu_target_set_action(FuDfuTarget *self, FwupdStatus action);
 void
-fu_dfu_target_set_percentage_raw(FuDfuTarget *self, guint percentage);
-void
-fu_dfu_target_set_percentage(FuDfuTarget *self, guint value, guint total);
-void
 fu_dfu_target_set_alt_name(FuDfuTarget *self, const gchar *alt_name);
 void
 fu_dfu_target_set_device(FuDfuTarget *self, FuDfuDevice *device);

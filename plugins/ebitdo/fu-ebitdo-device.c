@@ -437,7 +437,6 @@ fu_ebitdo_device_detach(FuDevice *device, GError **error)
 	}
 
 	/* wait */
-	fu_device_set_progress(device, 0);
 	fu_device_add_flag(device, FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 
 	/* emit request */
@@ -456,6 +455,7 @@ fu_ebitdo_device_write_firmware(FuDevice *device,
 				GError **error)
 {
 	FuEbitdoDevice *self = FU_EBITDO_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	const guint8 *buf;
 	gsize bufsz = 0;
 	guint32 serial_new[3];
@@ -489,6 +489,12 @@ fu_ebitdo_device_write_firmware(FuDevice *device,
 		return FALSE;
 	}
 
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_BUSY, 2); /* header */
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 96);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_VERIFY, 2);
+
 	/* get header and payload */
 	fw_hdr = fu_firmware_get_image_by_id_bytes(firmware, FU_FIRMWARE_ID_HEADER, error);
 	if (fw_hdr == NULL)
@@ -498,7 +504,6 @@ fu_ebitdo_device_write_firmware(FuDevice *device,
 		return FALSE;
 
 	/* set up the firmware header */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
 	buf = g_bytes_get_data(fw_hdr, &bufsz);
 	if (!fu_ebitdo_device_send(self,
 				   FU_EBITDO_PKT_TYPE_USER_CMD,
@@ -514,6 +519,7 @@ fu_ebitdo_device_write_firmware(FuDevice *device,
 		g_prefix_error(error, "failed to get ACK for fw update header: ");
 		return FALSE;
 	}
+	fu_progress_step_done(progress);
 
 	/* flash the firmware in 32 byte blocks */
 	chunks = fu_chunk_array_new_from_bytes(fw_payload, 0x0, 0x0, 32);
@@ -543,8 +549,11 @@ fu_ebitdo_device_write_firmware(FuDevice *device,
 				       fu_chunk_get_address(chk));
 			return FALSE;
 		}
-		fu_device_set_progress_full(device, fu_chunk_get_idx(chk), chunks->len);
+		fu_progress_set_percentage_full(fu_progress_get_child(progress),
+						i + 1,
+						chunks->len);
 	}
+	fu_progress_step_done(progress);
 
 	/* set the "encode id" which is likely a checksum, bluetooth pairing
 	 * or maybe just security-through-obscurity -- also note:
@@ -584,6 +593,7 @@ fu_ebitdo_device_write_firmware(FuDevice *device,
 		g_propagate_error(error, g_steal_pointer(&error_local));
 		return FALSE;
 	}
+	fu_progress_step_done(progress);
 
 	/* success! */
 	return TRUE;
@@ -593,11 +603,12 @@ static gboolean
 fu_ebitdo_device_attach(FuDevice *device, GError **error)
 {
 	GUsbDevice *usb_device = fu_usb_device_get_dev(FU_USB_DEVICE(device));
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autoptr(GError) error_local = NULL;
 
 	/* when doing a soft-reboot the device does not re-enumerate properly
 	 * so manually reboot the GUsbDevice */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	if (!g_usb_device_reset(usb_device, &error_local)) {
 		g_prefix_error(&error_local, "failed to force-reset device: ");
 		if (fu_device_has_flag(device, FWUPD_DEVICE_FLAG_WILL_DISAPPEAR)) {

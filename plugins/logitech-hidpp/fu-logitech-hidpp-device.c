@@ -887,6 +887,7 @@ fu_logitech_hidpp_device_write_firmware(FuDevice *device,
 					GError **error)
 {
 	FuLogitechHidPpDevice *self = FU_HIDPP_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	gsize sz = 0;
 	const guint8 *data;
 	guint8 cmd = 0x04;
@@ -907,7 +908,7 @@ fu_logitech_hidpp_device_write_firmware(FuDevice *device,
 
 	/* flash hardware */
 	data = g_bytes_get_data(fw, &sz);
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_WRITE);
 	for (gsize i = 0; i < sz / 16; i++) {
 		/* send packet and wait for reply */
 		g_debug("send data at addr=0x%04x", (guint)i * 16);
@@ -924,7 +925,7 @@ fu_logitech_hidpp_device_write_firmware(FuDevice *device,
 		cmd = (cmd + 1) % 4;
 
 		/* update progress-bar */
-		fu_device_set_progress_full(device, i * 16, sz);
+		fu_progress_set_percentage_full(progress, (i + 1) * 16, sz);
 	}
 
 	return TRUE;

@@ -809,6 +809,7 @@ fu_cros_ec_usb_device_write_firmware(FuDevice *device,
 				     GError **error)
 {
 	FuCrosEcUsbDevice *self = FU_CROS_EC_USB_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	GPtrArray *sections;
 	FuCrosEcFirmware *cros_ec_firmware = FU_CROS_EC_FIRMWARE(firmware);
 	gint num_txed_sections = 0;
@@ -880,7 +881,7 @@ fu_cros_ec_usb_device_write_firmware(FuDevice *device,
 		return FALSE;
 	}
 
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_WRITE);
 	for (guint i = 0; i < sections->len; i++) {
 		FuCrosEcFirmwareSection *section = g_ptr_array_index(sections, i);
 
@@ -914,6 +915,7 @@ fu_cros_ec_usb_device_write_firmware(FuDevice *device,
 								 section->version.triplet);
 			}
 		}
+		fu_progress_set_percentage_full(progress, (gsize)i + 1, (gsize)sections->len);
 	}
 	/* send done */
 	fu_cros_ec_usb_device_send_done(device);
@@ -984,6 +986,7 @@ static gboolean
 fu_cros_ec_usb_device_attach(FuDevice *device, GError **error)
 {
 	FuCrosEcUsbDevice *self = FU_CROS_EC_USB_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 
 	fu_device_set_remove_delay(device, CROS_EC_REMOVE_DELAY_RE_ENUMERATE);
 	if (self->in_bootloader &&
@@ -996,7 +999,7 @@ fu_cros_ec_usb_device_attach(FuDevice *device, GError **error)
 		 * ro -> rw.
 		 */
 		fu_device_remove_private_flag(device, FU_CROS_EC_USB_DEVICE_FLAG_SPECIAL);
-		fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+		fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 		fu_device_add_flag(device, FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 		return TRUE;
 	}
@@ -1009,7 +1012,7 @@ fu_cros_ec_usb_device_attach(FuDevice *device, GError **error)
 	} else {
 		fu_cros_ec_usb_device_jump_to_rw(device);
 	}
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	fu_device_add_flag(device, FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 
 	/* success */
@@ -1020,6 +1023,7 @@ static gboolean
 fu_cros_ec_usb_device_detach(FuDevice *device, GError **error)
 {
 	FuCrosEcUsbDevice *self = FU_CROS_EC_USB_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 
 	if (fu_device_has_private_flag(device, FU_CROS_EC_USB_DEVICE_FLAG_RW_WRITTEN) &&
 	    !fu_device_has_private_flag(device, FU_CROS_EC_USB_DEVICE_FLAG_RO_WRITTEN))
@@ -1036,7 +1040,7 @@ fu_cros_ec_usb_device_detach(FuDevice *device, GError **error)
 		if (!fu_cros_ec_usb_device_reset_to_ro(device, error))
 			return FALSE;
 
-		fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+		fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 		fu_device_add_flag(device, FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 	}
 

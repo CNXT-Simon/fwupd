@@ -183,12 +183,13 @@ static GBytes *
 fu_dfu_csr_device_upload(FuDevice *device, GError **error)
 {
 	FuDfuCsrDevice *self = FU_DFU_CSR_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	g_autoptr(GPtrArray) chunks = NULL;
 	guint32 total_sz = 0;
 	gsize done_sz = 0;
 
 	/* notify UI */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_READ);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_READ);
 
 	chunks = g_ptr_array_new_with_free_func((GDestroyNotify)g_bytes_unref);
 	for (guint32 i = 0; i < 0x3ffffff; i++) {
@@ -253,7 +254,7 @@ fu_dfu_csr_device_upload(FuDevice *device, GError **error)
 		/* add to chunk array */
 		done_sz += chunk_sz;
 		g_ptr_array_add(chunks, g_steal_pointer(&chunk));
-		fu_device_set_progress_full(device, done_sz, (gsize)total_sz);
+		fu_progress_set_percentage_full(progress, done_sz, (gsize)total_sz);
 
 		/* we're done */
 		if (chunk_sz < 64 - FU_DFU_CSR_COMMAND_HEADER_SIZE)
@@ -370,6 +371,7 @@ fu_dfu_csr_device_download(FuDevice *device,
 			   GError **error)
 {
 	FuDfuCsrDevice *self = FU_DFU_CSR_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	guint16 idx;
 	g_autoptr(GBytes) blob_empty = NULL;
 	g_autoptr(GBytes) blob = NULL;
@@ -381,7 +383,7 @@ fu_dfu_csr_device_download(FuDevice *device,
 		return FALSE;
 
 	/* notify UI */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_WRITE);
 
 	/* create chunks */
 	chunks = fu_chunk_array_new_from_bytes(blob,
@@ -400,7 +402,7 @@ fu_dfu_csr_device_download(FuDevice *device,
 			return FALSE;
 
 		/* update progress */
-		fu_device_set_progress_full(device, (gsize)idx, (gsize)chunks->len);
+		fu_progress_set_percentage_full(progress, (gsize)idx + 1, (gsize)chunks->len);
 	}
 
 	/* all done */

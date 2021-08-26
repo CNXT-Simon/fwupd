@@ -323,6 +323,7 @@ fu_plugin_write_firmware(FuPlugin *plugin,
 			 FwupdInstallFlags flags,
 			 GError **error)
 {
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	const gchar *str;
 	guint32 flashes_left;
 	g_autoptr(GError) error_splash = NULL;
@@ -352,7 +353,7 @@ fu_plugin_write_firmware(FuPlugin *plugin,
 	g_assert(str != NULL);
 
 	/* perform the update */
-	fu_device_set_status(device, FWUPD_STATUS_SCHEDULING);
+	fu_progress_set_status(progress, FWUPD_STATUS_SCHEDULING);
 	if (!fu_plugin_uefi_capsule_update_splash(plugin, device, &error_splash)) {
 		g_debug("failed to upload UEFI UX capsule text: %s", error_splash->message);
 	}

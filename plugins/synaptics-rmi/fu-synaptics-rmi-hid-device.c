@@ -457,6 +457,7 @@ static gboolean
 fu_synaptics_rmi_hid_device_attach(FuDevice *device, GError **error)
 {
 	FuSynapticsRmiDevice *self = FU_SYNAPTICS_RMI_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 
 	/* sanity check */
 	if (!fu_device_has_flag(device, FWUPD_DEVICE_FLAG_IS_BOOTLOADER)) {
@@ -469,7 +470,7 @@ fu_synaptics_rmi_hid_device_attach(FuDevice *device, GError **error)
 		return FALSE;
 
 	/* rebind to rescan PDT with new firmware running */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	return fu_synaptics_rmi_hid_device_rebind_driver(self, error);
 }
 

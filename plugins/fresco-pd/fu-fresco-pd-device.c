@@ -223,10 +223,11 @@ fu_fresco_pd_device_prepare_firmware(FuDevice *device,
 static gboolean
 fu_fresco_pd_device_panther_reset_device(FuFrescoPdDevice *self, GError **error)
 {
+	FuProgress *progress = fu_device_get_progress_helper(FU_DEVICE(self));
 	g_autoptr(GError) error_local = NULL;
 
 	g_debug("resetting target device");
-	fu_device_set_status(FU_DEVICE(self), FWUPD_STATUS_DEVICE_RESTART);
+	fu_progress_set_status(progress, FWUPD_STATUS_DEVICE_RESTART);
 	fu_device_add_flag(FU_DEVICE(self), FWUPD_DEVICE_FLAG_WAIT_FOR_REPLUG);
 
 	/* ignore when the device reset before completing the transaction */
@@ -250,12 +251,20 @@ fu_fresco_pd_device_write_firmware(FuDevice *device,
 				   GError **error)
 {
 	FuFrescoPdDevice *self = FU_FRESCO_PD_DEVICE(device);
+	FuProgress *progress = fu_device_get_progress_helper(device);
 	const guint8 *buf;
 	gsize bufsz = 0x0;
 	guint16 begin_addr = 0x6420;
 	guint8 config[3] = {0x0};
 	guint8 start_symbols[2] = {0x0};
 	g_autoptr(GBytes) fw = NULL;
+
+	/* progress */
+	fu_progress_set_id(progress, G_STRLOC);
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_BUSY, 2);	/* enable mtp write */
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_WRITE, 50);	/* copy-mmio */
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_VERIFY, 46); /* customize */
+	fu_progress_add_step(progress, FWUPD_STATUS_DEVICE_BUSY, 2);	/* boot */
 
 	/* get default blob, which we know is already bigger than FirmwareMin */
 	fw = fu_firmware_get_bytes(firmware, error);
@@ -277,7 +286,6 @@ fu_fresco_pd_device_write_firmware(FuDevice *device,
 	/* 0xA001<bit 2> = b'0
 	 * 0x6C00<bit 1> = b'0
 	 * 0x6C04 = 0x08 */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_BUSY);
 	g_debug("disable MCU, and enable mtp write");
 	if (!fu_fresco_pd_device_and_byte(self, 0xa001, ~(1 << 2), error)) {
 		g_prefix_error(error, "failed to disable MCU bit 2: ");
@@ -293,7 +301,6 @@ fu_fresco_pd_device_write_firmware(FuDevice *device,
 	}
 
 	/* fill safe code in the boot code */
-	fu_device_set_status(device, FWUPD_STATUS_DEVICE_WRITE);
 	for (guint16 i = 0; i < 0x400; i += 3) {
 		for (guint j = 0; j < 3; j++) {
 			if (!fu_fresco_pd_device_read_byte(self,
@@ -328,6 +335,7 @@ fu_fresco_pd_device_write_firmware(FuDevice *device,
 		} else if (config[0] == 0x00 && config[1] == 0x00 && config[2] != 0x00)
 			break;
 	}
+	fu_progress_step_done(progress);
 
 	/* copy buf offset [0 - 0x3FFFF] to mmio address [0x2000 - 0x5FFF] */
 	g_debug("fill firmware body");
@@ -337,8 +345,11 @@ fu_fresco_pd_device_write_firmware(FuDevice *device,
 						  buf[byte_index],
 						  error))
 			return FALSE;
-		fu_device_set_progress_full(device, (gsize)byte_index, 0x4000);
+		fu_progress_set_percentage_full(fu_progress_get_child(progress),
+						(gsize)byte_index + 1,
+						0x4000);
 	}
+	fu_progress_step_done(progress);
 
 	/* write file buf 0x4200 ~ 0x4205, 6 bytes to internal address 0x6600 ~ 0x6605
 	 * write file buf 0x4210 ~ 0x4215, 6 bytes to internal address 0x6610 ~ 0x6615
@@ -364,6 +375,7 @@ fu_fresco_pd_device_write_firmware(FuDevice *device,
 	}
 	if (!fu_fresco_pd_device_set_byte(self, 0x6630, buf[0x4230], error))
 		return FALSE;
+	fu_progress_step_done(progress);
 
 	/* overwrite firmware file's boot code area (0x4020 ~ 0x41ff) to the area on the device
 	 * marked by begin_addr example: if the begin_addr = 0x6420, then copy file buf [0x4020 ~
@@ -386,6 +398,7 @@ fu_fresco_pd_device_write_firmware(FuDevice *device,
 						  error))
 			return FALSE;
 	}
+	fu_progress_step_done(progress);
 
 	/* reset the device */
 	return fu_fresco_pd_device_panther_reset_device(self, error);

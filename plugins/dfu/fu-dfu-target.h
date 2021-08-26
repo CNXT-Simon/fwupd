@@ -40,7 +40,6 @@ typedef enum {
 
 struct _FuDfuTargetClass {
 	GUsbDeviceClass parent_class;
-	void (*percentage_changed)(FuDfuTarget *self, guint percentage);
 	void (*action_changed)(FuDfuTarget *self, FwupdStatus action);
 	gboolean (*setup)(FuDfuTarget *self, GError **error);
 	gboolean (*attach)(FuDfuTarget *self, GError **error);
@@ -50,9 +49,11 @@ struct _FuDfuTargetClass {
 				   guint32 address,
 				   gsize expected_size,
 				   gsize maximum_size,
+				   FuProgress *progress,
 				   GError **error);
 	gboolean (*download_element)(FuDfuTarget *self,
 				     FuChunk *chk,
+				     FuProgress *progress,
 				     FuDfuTargetTransferFlags flags,
 				     GError **error);
 };
@@ -70,6 +71,7 @@ fu_dfu_target_get_alt_name_for_display(FuDfuTarget *self, GError **error);
 gboolean
 fu_dfu_target_upload(FuDfuTarget *self,
 		     FuFirmware *firmware,
+		     FuProgress *progress,
 		     FuDfuTargetTransferFlags flags,
 		     GError **error);
 gboolean
@@ -77,6 +79,7 @@ fu_dfu_target_setup(FuDfuTarget *self, GError **error);
 gboolean
 fu_dfu_target_download(FuDfuTarget *self,
 		       FuFirmware *image,
+		       FuProgress *progress,
 		       FuDfuTargetTransferFlags flags,
 		       GError **error);
 gboolean
