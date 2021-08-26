@@ -20,11 +20,7 @@
 #include "fu-history.h"
 #include "fu-mutex.h"
 
-<<<<<<< HEAD
-#define FU_HISTORY_CURRENT_SCHEMA_VERSION 6
-=======
 #define FU_HISTORY_CURRENT_SCHEMA_VERSION	7
->>>>>>> a9f711cb (Generate security attribute json string)
 
 static void
 fu_history_finalize(GObject *object);
@@ -1338,7 +1334,7 @@ fu_history_add_security_attribute(FuHistory *self, gchar *security_attr_json,
 	if (rc != SQLITE_OK) {
 		g_warning("write error %s", sqlite3_errmsg (self->db));
 		g_set_error (error, FWUPD_ERROR, FWUPD_ERROR_INTERNAL,
-			     "Failed to prepare SQL to delete blocked firmware: %s",
+			     "Failed to prepare SQL to write security attribute: %s",
 			     sqlite3_errmsg (self->db));
 		return FALSE;
 	}
