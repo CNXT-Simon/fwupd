@@ -48,8 +48,8 @@ gboolean
 fu_history_add_blocked_firmware(FuHistory *self, const gchar *checksum, GError **error);
 GPtrArray *
 fu_history_get_blocked_firmware(FuHistory *self, GError **error);
-gboolean	
-fu_history_add_security_attribute(FuHistory *self, 
-								  gchar *security_attr_json,
-								  gchar *hsi_score, 
-								  GError **error);
+gboolean
+fu_history_add_security_attribute(FuHistory *self,
+				  gchar *security_attr_json,
+				  gchar *hsi_score,
+				  GError **error);

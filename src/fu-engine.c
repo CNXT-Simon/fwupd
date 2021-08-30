@@ -5951,8 +5951,8 @@ fu_engine_ensure_security_attrs(FuEngine *self)
 	data = fu_security_attrs_to_json_string(self->host_security_attrs);
 
 	/*Store string to db*/
-	fu_history_add_security_attribute(self->history, data, 
-									self->host_security_id, &error);
+	fu_history_add_security_attribute(self->history, data,
+					  self->host_security_id, &error);
 
 	g_free(data);
 }

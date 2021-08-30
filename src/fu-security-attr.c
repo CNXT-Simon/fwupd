@@ -270,7 +270,6 @@ fu_security_attrs_to_json_string(FuSecurityAttrs *attrs)
 	gchar *data = NULL;
 	JsonNode *json_root = NULL;
 	JsonGenerator *json_generator = NULL;
-   
 	JsonBuilder *builder = json_builder_new ();
 	fu_security_attrs_to_json(attrs, builder);
 	/* export as a string */
@@ -289,13 +288,11 @@ fu_security_attrs_to_json_string(FuSecurityAttrs *attrs)
 	return data;
 }
 
-
 void
 fu_security_attrs_to_json(FuSecurityAttrs *attrs, JsonBuilder *builder)
 {
 	g_autoptr(GPtrArray) items = NULL;
 	g_autoptr(GError) error = NULL;
-	 
 	// create json builder
 	json_builder_begin_object (builder);
 	json_builder_set_member_name (builder, "SecurityAttrs");
@@ -313,4 +310,3 @@ fu_security_attrs_to_json(FuSecurityAttrs *attrs, JsonBuilder *builder)
 	json_builder_end_object (builder);
 	json_builder_end_object (builder);
 }
-

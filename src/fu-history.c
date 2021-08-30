@@ -1309,10 +1309,9 @@ fu_history_add_blocked_firmware(FuHistory *self, const gchar *checksum, GError *
 	return fu_history_stmt_exec(self, stmt, NULL, error);
 }
 
-
 gboolean
 fu_history_add_security_attribute(FuHistory *self, gchar *security_attr_json, 
-									gchar *hsi_score, GError **error)
+				  gchar *hsi_score, GError **error)
 {
 	gint rc;
 	g_autoptr(sqlite3_stmt) stmt = NULL;
