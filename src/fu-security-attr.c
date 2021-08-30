@@ -262,7 +262,7 @@ fu_security_attrs_to_json_string(FuSecurityAttrs *attrs)
            {
              "name": "aaa",
              "value": "bbb"
-           } 
+           }
        ]
     }
 }

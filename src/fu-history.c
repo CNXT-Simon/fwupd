@@ -1310,7 +1310,7 @@ fu_history_add_blocked_firmware(FuHistory *self, const gchar *checksum, GError *
 }
 
 gboolean
-fu_history_add_security_attribute(FuHistory *self, gchar *security_attr_json, 
+fu_history_add_security_attribute(FuHistory *self, gchar *security_attr_json,
 				  gchar *hsi_score, GError **error)
 {
 	gint rc;
@@ -1322,7 +1322,6 @@ fu_history_add_security_attribute(FuHistory *self, gchar *security_attr_json,
 	/* lazy load */
 	if (!fu_history_load (self, error))
 		return FALSE;
-
 	/* remove entries */
 	locker = g_rw_lock_writer_locker_new (&self->db_mutex);
 	g_return_val_if_fail (locker != NULL, FALSE);
