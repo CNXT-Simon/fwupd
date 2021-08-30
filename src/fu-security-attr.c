@@ -4,13 +4,11 @@
  * SPDX-License-Identifier: LGPL-2.1+
  */
 
-#include "fu-security-attr.h"
-
 #include <config.h>
 #include <glib/gi18n.h>
-
 #include <json-glib/json-glib.h>
 
+#include "fu-security-attr.h"
 #include "fwupd-security-attr-private.h"
 #include "fu-security-attrs-private.h"
 
@@ -255,18 +253,18 @@ gchar *
 fu_security_attrs_to_json_string(FuSecurityAttrs *attrs)
 {
 
-/*  Expected Seccurity attr format
-{
-    "SecurityAttrs": {
-       "Attrs": [
-           {
-             "name": "aaa",
-             "value": "bbb"
-           }
-       ]
-    }
-}
-*/
+	/*  Expected Seccurity attr format
+	{
+    	    "SecurityAttrs": {
+       	        "Attrs": [
+		    {
+             	        "name": "aaa",
+             	        "value": "bbb"
+           	    }
+       		]
+    	    }
+	}
+	*/
 	gchar *data = NULL;
 	JsonNode *json_root = NULL;
 	JsonGenerator *json_generator = NULL;
@@ -293,7 +291,6 @@ fu_security_attrs_to_json(FuSecurityAttrs *attrs, JsonBuilder *builder)
 {
 	g_autoptr(GPtrArray) items = NULL;
 	g_autoptr(GError) error = NULL;
-	// create json builder
 	json_builder_begin_object (builder);
 	json_builder_set_member_name (builder, "SecurityAttrs");
 	json_builder_begin_object (builder);

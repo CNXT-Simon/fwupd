@@ -5947,10 +5947,10 @@ fu_engine_ensure_security_attrs(FuEngine *self)
 	g_free (self->host_security_id);
 	self->host_security_id = fu_engine_attrs_calculate_hsi_for_chassis (self);
 
-	/*Convert Security attribute to json string*/
+	/* Convert Security attribute to json string */
 	data = fu_security_attrs_to_json_string(self->host_security_attrs);
 
-	/*Store string to db*/
+	/* Store string to db */
 	fu_history_add_security_attribute(self->history, data,
 					  self->host_security_id, &error);
 
