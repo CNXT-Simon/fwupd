@@ -4,12 +4,14 @@
  * SPDX-License-Identifier: LGPL-2.1+
  */
 
+#include "fu-security-attr.h"
+
 #include <config.h>
 #include <glib/gi18n.h>
 #include <json-glib/json-glib.h>
 
-#include "fu-security-attr.h"
 #include "fwupd-security-attr-private.h"
+
 #include "fu-security-attrs-private.h"
 
 gchar *
@@ -252,37 +254,36 @@ fu_security_attr_get_result(FwupdSecurityAttr *attr)
 gchar *
 fu_security_attrs_to_json_string(FuSecurityAttrs *attrs)
 {
-
 	/*  Expected Seccurity attr format
 	{
-    	    "SecurityAttrs": {
-       	        "Attrs": [
+	    "SecurityAttrs": {
+		"Attrs": [
 		    {
-             	        "name": "aaa",
-             	        "value": "bbb"
-           	    }
-       		]
-    	    }
+			"name": "aaa",
+			"value": "bbb"
+		    }
+		]
+	    }
 	}
 	*/
 	gchar *data = NULL;
 	JsonNode *json_root = NULL;
 	JsonGenerator *json_generator = NULL;
-	JsonBuilder *builder = json_builder_new ();
+	JsonBuilder *builder = json_builder_new();
 	fu_security_attrs_to_json(attrs, builder);
 	/* export as a string */
-	json_root = json_builder_get_root (builder);
-	json_generator = json_generator_new ();
-	json_generator_set_pretty (json_generator, TRUE);
-	json_generator_set_root (json_generator, json_root);
-	data = json_generator_to_data (json_generator, NULL);
+	json_root = json_builder_get_root(builder);
+	json_generator = json_generator_new();
+	json_generator_set_pretty(json_generator, TRUE);
+	json_generator_set_root(json_generator, json_root);
+	data = json_generator_to_data(json_generator, NULL);
 	if (data == NULL) {
 		g_warning("Converting to Json string error");
 		return NULL;
 	}
-	json_node_free (json_root);
-	g_object_unref (json_generator);
-	g_object_unref (builder);
+	json_node_free(json_root);
+	g_object_unref(json_generator);
+	g_object_unref(builder);
 	return data;
 }
 
@@ -291,19 +292,19 @@ fu_security_attrs_to_json(FuSecurityAttrs *attrs, JsonBuilder *builder)
 {
 	g_autoptr(GPtrArray) items = NULL;
 	g_autoptr(GError) error = NULL;
-	json_builder_begin_object (builder);
-	json_builder_set_member_name (builder, "SecurityAttrs");
-	json_builder_begin_object (builder);
-	json_builder_set_member_name (builder, "Attrs");
-	json_builder_begin_array (builder);
-	items = fu_security_attrs_get_all (attrs);
+	json_builder_begin_object(builder);
+	json_builder_set_member_name(builder, "SecurityAttrs");
+	json_builder_begin_object(builder);
+	json_builder_set_member_name(builder, "Attrs");
+	json_builder_begin_array(builder);
+	items = fu_security_attrs_get_all(attrs);
 	for (guint i = 0; i < items->len; i++) {
-		FwupdSecurityAttr *attr = g_ptr_array_index (items, i);
-		json_builder_begin_object (builder);
-		fwupd_security_attr_to_json (attr, builder);
-		json_builder_end_object (builder);
+		FwupdSecurityAttr *attr = g_ptr_array_index(items, i);
+		json_builder_begin_object(builder);
+		fwupd_security_attr_to_json(attr, builder);
+		json_builder_end_object(builder);
 	}
-	json_builder_end_array (builder);
-	json_builder_end_object (builder);
-	json_builder_end_object (builder);
+	json_builder_end_array(builder);
+	json_builder_end_object(builder);
+	json_builder_end_object(builder);
 }

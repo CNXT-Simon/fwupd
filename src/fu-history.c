@@ -20,7 +20,7 @@
 #include "fu-history.h"
 #include "fu-mutex.h"
 
-#define FU_HISTORY_CURRENT_SCHEMA_VERSION	7
+#define FU_HISTORY_CURRENT_SCHEMA_VERSION 7
 
 static void
 fu_history_finalize(GObject *object);
@@ -156,41 +156,41 @@ static gboolean
 fu_history_create_database(FuHistory *self, GError **error)
 {
 	gint rc;
-	rc = sqlite3_exec (self->db,
-			 "BEGIN TRANSACTION;"
-			 "CREATE TABLE IF NOT EXISTS schema ("
-			 "created timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
-			 "version INTEGER DEFAULT 0);"
-			 "INSERT INTO schema (version) VALUES (0);"
-			 "CREATE TABLE IF NOT EXISTS history ("
-			 "device_id TEXT,"
-			 "update_state INTEGER DEFAULT 0,"
-			 "update_error TEXT,"
-			 "filename TEXT,"
-			 "display_name TEXT,"
-			 "plugin TEXT,"
-			 "device_created INTEGER DEFAULT 0,"
-			 "device_modified INTEGER DEFAULT 0,"
-			 "checksum TEXT DEFAULT NULL,"
-			 "flags INTEGER DEFAULT 0,"
-			 "metadata TEXT DEFAULT NULL,"
-			 "guid_default TEXT DEFAULT NULL,"
-			 "version_old TEXT,"
-			 "version_new TEXT,"
-			 "checksum_device TEXT DEFAULT NULL,"
-			 "protocol TEXT DEFAULT NULL);"
-			 "CREATE TABLE IF NOT EXISTS approved_firmware ("
-			 "checksum TEXT);"
-			 "CREATE TABLE IF NOT EXISTS blocked_firmware ("
-			 "checksum TEXT);"
-			 "CREATE TABLE IF NOT EXISTS hsi_history ("
-			 "last timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
-			 "hsi_details TEXT DEFAULT NULL,"
-			 "hsi_score TEXT DEFAULT NULL);"
-			 "COMMIT;",
-			 NULL,
-			 NULL,
-			 NULL);
+	rc = sqlite3_exec(self->db,
+			  "BEGIN TRANSACTION;"
+			  "CREATE TABLE IF NOT EXISTS schema ("
+			  "created timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+			  "version INTEGER DEFAULT 0);"
+			  "INSERT INTO schema (version) VALUES (0);"
+			  "CREATE TABLE IF NOT EXISTS history ("
+			  "device_id TEXT,"
+			  "update_state INTEGER DEFAULT 0,"
+			  "update_error TEXT,"
+			  "filename TEXT,"
+			  "display_name TEXT,"
+			  "plugin TEXT,"
+			  "device_created INTEGER DEFAULT 0,"
+			  "device_modified INTEGER DEFAULT 0,"
+			  "checksum TEXT DEFAULT NULL,"
+			  "flags INTEGER DEFAULT 0,"
+			  "metadata TEXT DEFAULT NULL,"
+			  "guid_default TEXT DEFAULT NULL,"
+			  "version_old TEXT,"
+			  "version_new TEXT,"
+			  "checksum_device TEXT DEFAULT NULL,"
+			  "protocol TEXT DEFAULT NULL);"
+			  "CREATE TABLE IF NOT EXISTS approved_firmware ("
+			  "checksum TEXT);"
+			  "CREATE TABLE IF NOT EXISTS blocked_firmware ("
+			  "checksum TEXT);"
+			  "CREATE TABLE IF NOT EXISTS hsi_history ("
+			  "last timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+			  "hsi_details TEXT DEFAULT NULL,"
+			  "hsi_score TEXT DEFAULT NULL);"
+			  "COMMIT;",
+			  NULL,
+			  NULL,
+			  NULL);
 	if (rc != SQLITE_OK) {
 		g_set_error(error,
 			    FWUPD_ERROR,
@@ -312,18 +312,22 @@ fu_history_migrate_database_v5(FuHistory *self, GError **error)
 }
 
 static gboolean
-fu_history_migrate_database_v6 (FuHistory *self, GError **error)
+fu_history_migrate_database_v6(FuHistory *self, GError **error)
 {
 	gint rc;
-	rc = sqlite3_exec (self->db,
-				"CREATE TABLE IF NOT EXISTS his_history ("
-					"last timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
-					"hsi_details TEXT DEFAULT NULL);",
-				NULL, NULL, NULL);
+	rc = sqlite3_exec(self->db,
+			  "CREATE TABLE IF NOT EXISTS his_history ("
+			  "last timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+			  "hsi_details TEXT DEFAULT NULL);",
+			  NULL,
+			  NULL,
+			  NULL);
 	if (rc != SQLITE_OK) {
-		g_set_error (error, FWUPD_ERROR, FWUPD_ERROR_INTERNAL,
-			     "Failed to create table: %s",
-			     sqlite3_errmsg (self->db));
+		g_set_error(error,
+			    FWUPD_ERROR,
+			    FWUPD_ERROR_INTERNAL,
+			    "Failed to create table: %s",
+			    sqlite3_errmsg(self->db));
 		return FALSE;
 	}
 	return TRUE;
@@ -387,7 +391,7 @@ fu_history_create_or_migrate(FuHistory *self, guint schema_ver, GError **error)
 			return FALSE;
 	/* fall through */
 	case 6:
-		if (!fu_history_migrate_database_v6 (self, error))
+		if (!fu_history_migrate_database_v6(self, error))
 			return FALSE;
 		break;
 	default:
@@ -1310,35 +1314,41 @@ fu_history_add_blocked_firmware(FuHistory *self, const gchar *checksum, GError *
 }
 
 gboolean
-fu_history_add_security_attribute(FuHistory *self, gchar *security_attr_json,
-				  gchar *hsi_score, GError **error)
+fu_history_add_security_attribute(FuHistory *self,
+				  gchar *security_attr_json,
+				  gchar *hsi_score,
+				  GError **error)
 {
 	gint rc;
 	g_autoptr(sqlite3_stmt) stmt = NULL;
 	g_autoptr(GRWLockWriterLocker) locker = NULL;
 
-	g_return_val_if_fail (FU_IS_HISTORY (self), FALSE);
+	g_return_val_if_fail(FU_IS_HISTORY(self), FALSE);
 
 	/* lazy load */
-	if (!fu_history_load (self, error))
+	if (!fu_history_load(self, error))
 		return FALSE;
 	/* remove entries */
-	locker = g_rw_lock_writer_locker_new (&self->db_mutex);
-	g_return_val_if_fail (locker != NULL, FALSE);
-	rc = sqlite3_prepare_v2 (self->db,
-				 "INSERT INTO hsi_history (hsi_details, hsi_score)"
-				 "VALUES (?1, ?2)",
-				 -1, &stmt, NULL);
+	locker = g_rw_lock_writer_locker_new(&self->db_mutex);
+	g_return_val_if_fail(locker != NULL, FALSE);
+	rc = sqlite3_prepare_v2(self->db,
+				"INSERT INTO hsi_history (hsi_details, hsi_score)"
+				"VALUES (?1, ?2)",
+				-1,
+				&stmt,
+				NULL);
 	if (rc != SQLITE_OK) {
-		g_warning("write error %s", sqlite3_errmsg (self->db));
-		g_set_error (error, FWUPD_ERROR, FWUPD_ERROR_INTERNAL,
-			     "Failed to prepare SQL to write security attribute: %s",
-			     sqlite3_errmsg (self->db));
+		g_warning("write error %s", sqlite3_errmsg(self->db));
+		g_set_error(error,
+			    FWUPD_ERROR,
+			    FWUPD_ERROR_INTERNAL,
+			    "Failed to prepare SQL to write security attribute: %s",
+			    sqlite3_errmsg(self->db));
 		return FALSE;
 	}
-	sqlite3_bind_text (stmt, 1, security_attr_json, -1, SQLITE_STATIC);
-	sqlite3_bind_text (stmt, 2, hsi_score, -1, SQLITE_STATIC);
-	return fu_history_stmt_exec (self, stmt, NULL, error);
+	sqlite3_bind_text(stmt, 1, security_attr_json, -1, SQLITE_STATIC);
+	sqlite3_bind_text(stmt, 2, hsi_score, -1, SQLITE_STATIC);
+	return fu_history_stmt_exec(self, stmt, NULL, error);
 }
 
 static void

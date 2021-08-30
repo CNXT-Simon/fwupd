@@ -5928,9 +5928,9 @@ fu_engine_ensure_security_attrs(FuEngine *self)
 	/* set the fallback names for clients without native translations */
 	items = fu_security_attrs_get_all(self->host_security_attrs);
 	for (guint i = 0; i < items->len; i++) {
-		FwupdSecurityAttr *attr = g_ptr_array_index (items, i);
-		if (fwupd_security_attr_get_name (attr) == NULL) {
-			g_autofree gchar *name_tmp = fu_security_attr_get_name (attr);
+		FwupdSecurityAttr *attr = g_ptr_array_index(items, i);
+		if (fwupd_security_attr_get_name(attr) == NULL) {
+			g_autofree gchar *name_tmp = fu_security_attr_get_name(attr);
 			if (name_tmp == NULL) {
 				g_warning("failed to get fallback for %s",
 					  fwupd_security_attr_get_appstream_id(attr));
@@ -5944,15 +5944,14 @@ fu_engine_ensure_security_attrs(FuEngine *self)
 	fu_security_attrs_depsolve(self->host_security_attrs);
 
 	/* distil into one simple string */
-	g_free (self->host_security_id);
-	self->host_security_id = fu_engine_attrs_calculate_hsi_for_chassis (self);
+	g_free(self->host_security_id);
+	self->host_security_id = fu_engine_attrs_calculate_hsi_for_chassis(self);
 
 	/* Convert Security attribute to json string */
 	data = fu_security_attrs_to_json_string(self->host_security_attrs);
 
 	/* Store string to db */
-	fu_history_add_security_attribute(self->history, data,
-					  self->host_security_id, &error);
+	fu_history_add_security_attribute(self->history, data, self->host_security_id, &error);
 
 	g_free(data);
 }
