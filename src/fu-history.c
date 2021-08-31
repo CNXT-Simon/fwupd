@@ -316,7 +316,7 @@ fu_history_migrate_database_v6(FuHistory *self, GError **error)
 {
 	gint rc;
 	rc = sqlite3_exec(self->db,
-			  "CREATE TABLE IF NOT EXISTS his_history ("
+			  "CREATE TABLE IF NOT EXISTS hsi_history ("
 			  "last timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
 			  "hsi_details TEXT DEFAULT NULL);",
 			  NULL,
@@ -1338,7 +1338,6 @@ fu_history_add_security_attribute(FuHistory *self,
 				&stmt,
 				NULL);
 	if (rc != SQLITE_OK) {
-		g_warning("write error %s", sqlite3_errmsg(self->db));
 		g_set_error(error,
 			    FWUPD_ERROR,
 			    FWUPD_ERROR_INTERNAL,

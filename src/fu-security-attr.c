@@ -251,25 +251,35 @@ fu_security_attr_get_result(FwupdSecurityAttr *attr)
 	return _("Failed");
 }
 
+/**
+ * fu_security_attrs_to_json_string：
+ * Convert security attribute to JSON string.
+ * @attrs: a pointer for a FuSecurityAttrs data structure.
+ * @error: return location for an error
+ *
+ * fu_security_attrs_to_json_string() converts FuSecurityAttrs and return the
+ * string pointer. The converted JSON format is shown as follows:
+ * {
+ *     "SecurityAttrs": {
+ *         "Attrs": [
+ *             {
+ *                  "name": "aaa",
+ *                  "value": "bbb"
+ *             }
+ *         ]
+ *     }
+ *  }
+ *
+ * Returns: A string and NULL on fail.
+ *
+ */
 gchar *
-fu_security_attrs_to_json_string(FuSecurityAttrs *attrs)
+fu_security_attrs_to_json_string(FuSecurityAttrs *attrs, GError **error)
 {
-	/*  Expected Seccurity attr format
-	{
-	    "SecurityAttrs": {
-		"Attrs": [
-		    {
-			"name": "aaa",
-			"value": "bbb"
-		    }
-		]
-	    }
-	}
-	*/
-	gchar *data = NULL;
+	g_autofree gchar *data = NULL;
 	JsonNode *json_root = NULL;
-	JsonGenerator *json_generator = NULL;
-	JsonBuilder *builder = json_builder_new();
+	g_autoptr(JsonGenerator) json_generator = NULL;
+	g_autoptr(JsonBuilder) builder = json_builder_new();
 	fu_security_attrs_to_json(attrs, builder);
 	/* export as a string */
 	json_root = json_builder_get_root(builder);
@@ -278,13 +288,14 @@ fu_security_attrs_to_json_string(FuSecurityAttrs *attrs)
 	json_generator_set_root(json_generator, json_root);
 	data = json_generator_to_data(json_generator, NULL);
 	if (data == NULL) {
-		g_warning("Converting to Json string error");
+		g_set_error(error,
+			    FWUPD_ERROR,
+			    FWUPD_ERROR_INTERNAL,
+			    "Failed to convert security attribute to json\n");
 		return NULL;
 	}
 	json_node_free(json_root);
-	g_object_unref(json_generator);
-	g_object_unref(builder);
-	return data;
+	return (gchar *)g_steal_pointer(&data);
 }
 
 void

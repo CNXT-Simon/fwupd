@@ -5901,7 +5901,7 @@ fu_engine_ensure_security_attrs(FuEngine *self)
 	g_autoptr(GPtrArray) devices = fu_device_list_get_all(self->device_list);
 	g_autoptr(GPtrArray) items = NULL;
 	g_autoptr(GError) error = NULL;
-	gchar *data = NULL;
+	g_autofree gchar *data = NULL;
 
 	/* already valid */
 	if (self->host_security_id != NULL)
@@ -5948,12 +5948,14 @@ fu_engine_ensure_security_attrs(FuEngine *self)
 	self->host_security_id = fu_engine_attrs_calculate_hsi_for_chassis(self);
 
 	/* Convert Security attribute to json string */
-	data = fu_security_attrs_to_json_string(self->host_security_attrs);
+	data = fu_security_attrs_to_json_string(self->host_security_attrs, &error);
 
 	/* Store string to db */
-	fu_history_add_security_attribute(self->history, data, self->host_security_id, &error);
-
-	g_free(data);
+	if (data != NULL)
+		fu_history_add_security_attribute(self->history,
+						  data,
+						  self->host_security_id,
+						  &error);
 }
 
 const gchar *
